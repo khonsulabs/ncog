@@ -5,15 +5,18 @@ use std::{
 };
 
 use chrono::{DateTime, Utc};
+use curve25519_dalek::edwards::CompressedEdwardsY;
 use ed25519_dalek::{Signer, Verifier};
 use hpke::{
     aead::{AeadTag, ChaCha20Poly1305},
+    generic_array::sequence::Split,
     kdf::HkdfSha384,
     kem::X25519HkdfSha256,
-    kex::KeyExchange,
-    Deserializable, EncappedKey, HpkeError, Kem, OpModeR, OpModeS, Serializable,
+    kex::{KeyExchange, X25519},
+    Deserializable, EncappedKey, HpkeError, OpModeR, OpModeS, Serializable,
 };
 use rand::rngs::OsRng;
+use sha2::{Digest, Sha512};
 
 pub struct PublishedKey {
     pub user: u64,
@@ -81,8 +84,11 @@ impl PublicKey {
                 let mut csprng = OsRng::default();
                 let op_mode = if let Some(sender) = sender {
                     match sender {
-                        PrivateKey::X25519(auth) => OpModeS::Auth(auth.clone()),
-                        _ => return Err(Error::IncorrectKeyType),
+                        PrivateKey::ED25519(_) => {
+                            let keypair = sender.x25519_keypair();
+
+                            OpModeS::Auth(keypair)
+                        }
                     }
                 } else {
                     OpModeS::Base
@@ -101,7 +107,7 @@ impl PublicKey {
                     tag: tag.to_bytes().to_vec(),
                     additional_data,
                     ciphertext: payload,
-                    sender: sender.map(|sender| sender.public_key()),
+                    sender: sender.map(|sender| sender.public_encryption_key()),
                 })
             }
             _ => Err(Error::IncorrectKeyType),
@@ -127,37 +133,29 @@ impl PublicKey {
 
 pub enum PrivateKey {
     ED25519(ed25519_dalek::Keypair),
-    X25519(
-        (
-            <hpke::kex::X25519 as KeyExchange>::PrivateKey,
-            <hpke::kex::X25519 as KeyExchange>::PublicKey,
-        ),
-    ),
 }
 
 impl PrivateKey {
-    pub fn new_signing() -> Self {
+    pub fn random() -> Self {
         let mut csprng = rand_07::rngs::OsRng::default();
         Self::ED25519(ed25519_dalek::Keypair::generate(&mut csprng))
     }
 
-    pub fn new_encryption() -> Self {
-        let mut csprng = OsRng::default();
-        Self::X25519(<hpke::kem::X25519HkdfSha256 as Kem>::gen_keypair(
-            &mut csprng,
-        ))
+    pub fn public_encryption_key(&self) -> PublicKey {
+        match self {
+            PrivateKey::ED25519(_) => PublicKey::X25519(self.x25519_public_key()),
+        }
     }
 
-    pub fn public_key(&self) -> PublicKey {
+    pub fn public_signing_key(&self) -> PublicKey {
         match self {
             PrivateKey::ED25519(key) => PublicKey::ED25519(key.public),
-            PrivateKey::X25519((_, public)) => PublicKey::X25519(public.clone()),
         }
     }
 
     pub fn decrypt(&self, payload: &EncryptedPayload) -> Result<Vec<u8>, Error> {
         match self {
-            PrivateKey::X25519((private_key, _)) => {
+            PrivateKey::ED25519(_) => {
                 let encapped_key = EncappedKey::from_bytes(&payload.encapsulated_key)?;
                 let op_mode = if let Some(sender) = &payload.sender {
                     OpModeR::Auth(match sender {
@@ -167,19 +165,54 @@ impl PrivateKey {
                 } else {
                     OpModeR::Base
                 };
-                let mut context = hpke::setup_receiver::<
-                    ChaCha20Poly1305,
-                    HkdfSha384,
-                    X25519HkdfSha256,
-                >(
-                    &op_mode, private_key, &encapped_key, &payload.subject
-                )?;
+                let recipient_private_key = self.x25519_private_key();
+                let mut context =
+                    hpke::setup_receiver::<ChaCha20Poly1305, HkdfSha384, X25519HkdfSha256>(
+                        &op_mode,
+                        &recipient_private_key,
+                        &encapped_key,
+                        &payload.subject,
+                    )?;
                 let mut output = payload.ciphertext.clone();
                 let tag = AeadTag::from_bytes(&payload.tag)?;
                 context.open(&mut output, &payload.additional_data, &tag)?;
                 Ok(output)
             }
-            _ => Err(Error::IncorrectKeyType),
+        }
+    }
+
+    fn x25519_public_key(&self) -> <X25519 as KeyExchange>::PublicKey {
+        match self {
+            PrivateKey::ED25519(key) => <X25519 as KeyExchange>::PublicKey::from_bytes(
+                &CompressedEdwardsY(*key.public.as_bytes())
+                    .decompress()
+                    .unwrap()
+                    .to_montgomery()
+                    .to_bytes(),
+            )
+            .unwrap(),
+        }
+    }
+
+    fn x25519_private_key(&self) -> <X25519 as KeyExchange>::PrivateKey {
+        match self {
+            PrivateKey::ED25519(keypair) => <X25519 as KeyExchange>::PrivateKey::from_bytes(&{
+                let h = Sha512::digest(keypair.secret.as_bytes());
+                let h = Split::split(h).0;
+                <[u8; 32]>::from(h)
+            })
+            .unwrap(),
+        }
+    }
+
+    fn x25519_keypair(
+        &self,
+    ) -> (
+        <X25519 as KeyExchange>::PrivateKey,
+        <X25519 as KeyExchange>::PublicKey,
+    ) {
+        match self {
+            PrivateKey::ED25519(_) => (self.x25519_private_key(), self.x25519_public_key()),
         }
     }
 }
@@ -212,39 +245,29 @@ impl PrivateIdentityKey {
                     signature: Signature::Ed25519(signature),
                 })
             }
-            _ => Err(Error::IncorrectKeyType),
         }
     }
 
     pub fn notarize(
         &self,
+        signer_timestamp: u64,
         signature: IdentifiedSignature,
-        verification_data: Vec<u8>,
-        verification_signature: Signature,
     ) -> Result<Notarization, Error> {
-        let timestamp = SystemTime::now()
+        let notary_timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("clock set in past")
             .as_secs();
-        let signature_window = 0;
 
-        let notarization_payload = Notarization::format_payload(
-            timestamp,
-            signature_window,
-            &signature,
-            &verification_data,
-            &verification_signature,
-        );
+        let notarization_payload =
+            Notarization::format_payload(notary_timestamp, signer_timestamp, &signature);
 
         let notarization = self.sign(&notarization_payload)?;
 
         Ok(Notarization {
             notarization,
-            timestamp,
-            signature_window,
+            notary_timestamp,
+            signer_timestamp,
             signature,
-            verification_data,
-            verification_signature,
         })
     }
 }
@@ -278,11 +301,6 @@ pub enum Error {
 ///
 /// - The `notarization` verifies the contents of the notarization itself.
 /// - The `signature` verifies that the signer signed the payload.
-/// - The `verification_signature` verifies that the payload of the signature is
-///   the orignal payload, and that the signer did not produce multiple payloads
-///   with the same signature. The notary generates the `verification_data`
-///   after it receives `signature`, preventing the signer from being able to
-///   forge payloads.
 pub struct Notarization {
     /// The signature and public key produced by the notary. It is a signature
     /// produced from the concatenation of the raw bytes of the rest of the
@@ -290,52 +308,41 @@ pub struct Notarization {
     pub notarization: IdentifiedSignature,
     /// The time of the notarization as attested by the notary. Measured in
     /// seconds since January 1, 1970 00:00:00 UTC.
-    pub timestamp: u64,
-    /// The number of seconds that the notarization process took.
-    pub signature_window: u16,
+    pub notary_timestamp: u64,
+    /// The time of the signature as attested by the signer. Measured in
+    /// seconds since January 1, 1970 00:00:00 UTC.
+    pub signer_timestamp: u64,
     /// The signature being notarized.
     pub signature: IdentifiedSignature,
-    /// Randomly generated data used to verify the payload being signed is
-    /// uniquely the payload being signed.
-    pub verification_data: Vec<u8>,
-    /// A second signature created by signing the original payload concatenated
-    /// by the `verification_data`. This signature must be created by the same
-    /// keypair that generated the original `signature`.
-    pub verification_signature: Signature,
 }
 
 impl Notarization {
     pub fn verify(&self, payload: &[u8]) -> Result<(), Error> {
         self.signature.verify(payload)?;
 
-        let mut verification_payload =
-            Vec::with_capacity(payload.len() + self.verification_data.len());
-        verification_payload.extend(payload);
-        verification_payload.extend(self.verification_data.iter());
-
-        self.signature
-            .signed_by
-            .key
-            .verify(&self.verification_signature, &verification_payload)?;
+        let notarization = Self::format_payload(
+            self.notary_timestamp,
+            self.signer_timestamp,
+            &self.signature,
+        );
+        self.notarization.verify(&notarization)?;
 
         Ok(())
     }
 
     pub fn format_payload(
-        timestamp: u64,
-        signature_window: u16,
+        notary_timestamp: u64,
+        signer_timestamp: u64,
         signature: &IdentifiedSignature,
-        verification_data: &[u8],
-        verification_signature: &Signature,
     ) -> Vec<u8> {
         let mut notarization_payload = Vec::new();
 
         // Timestamps
         notarization_payload
-            .write_all(&timestamp.to_be_bytes())
+            .write_all(&notary_timestamp.to_be_bytes())
             .unwrap();
         notarization_payload
-            .write_all(&signature_window.to_be_bytes())
+            .write_all(&signer_timestamp.to_be_bytes())
             .unwrap();
 
         // Signer identity
@@ -351,22 +358,14 @@ impl Notarization {
             .write_all(&signature.signature.to_bytes())
             .unwrap();
 
-        // Verification data
-        notarization_payload.write_all(verification_data).unwrap();
-
-        // Verification signature
-        notarization_payload
-            .write_all(&verification_signature.to_bytes())
-            .unwrap();
-
         notarization_payload
     }
 }
 
 #[test]
 fn anonymous_sender_encrypt_test() {
-    let bob = PrivateKey::new_encryption();
-    let bob_public_key = bob.public_key();
+    let bob = PrivateKey::random();
+    let bob_public_key = bob.public_encryption_key();
 
     let payload = bob_public_key
         .encrypt_for(
@@ -385,12 +384,12 @@ fn anonymous_sender_encrypt_test() {
 #[test]
 fn verified_sender_encrypt_test() {
     let alice = PrivateIdentityKey {
-        key: PrivateKey::new_encryption(),
+        key: PrivateKey::random(),
         domain: String::from("acme"),
     };
 
-    let bob = PrivateKey::new_encryption();
-    let bob_public_key = bob.public_key();
+    let bob = PrivateKey::random();
+    let bob_public_key = bob.public_encryption_key();
 
     let mut payload = alice
         .encrypt(
@@ -415,29 +414,20 @@ fn notarization_test() {
     let payload = b"payload";
 
     let alice = PrivateIdentityKey {
-        key: PrivateKey::new_signing(),
+        key: PrivateKey::random(),
         domain: String::from("acme"),
     };
 
     let bob = PrivateIdentityKey {
-        key: PrivateKey::new_signing(),
+        key: PrivateKey::random(),
         domain: String::from("acme"),
     };
 
+    let alice_timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock set in past")
+        .as_secs();
     let signature = alice.sign(payload).unwrap();
-    // Normally this data would come from bob, randomly generated, after he received the signature.
-    let verification_data = b"verification";
-    let mut verification_payload = Vec::new();
-    verification_payload.extend(payload);
-    verification_payload.extend(verification_data);
-    let verification_signature = alice.sign(&verification_payload).unwrap();
-
-    let notarization = bob
-        .notarize(
-            signature,
-            verification_data.to_vec(),
-            verification_signature.signature,
-        )
-        .unwrap();
+    let notarization = bob.notarize(alice_timestamp, signature).unwrap();
     notarization.verify(payload).unwrap();
 }
