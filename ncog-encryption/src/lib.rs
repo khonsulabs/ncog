@@ -1,5 +1,6 @@
 use std::{
     fmt::Debug,
+    hash::Hash,
     io::Write,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -16,6 +17,7 @@ use hpke::{
     Deserializable, EncappedKey, HpkeError, OpModeR, OpModeS, Serializable,
 };
 use rand::rngs::OsRng;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha512};
 
 pub struct PublishedKey {
@@ -26,13 +28,13 @@ pub struct PublishedKey {
     pub expires: DateTime<Utc>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct PublicIdentityKey {
     pub key: PublicKey,
     pub domain: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct IdentifiedSignature {
     pub signed_by: PublicIdentityKey,
     pub signature: Signature,
@@ -44,7 +46,7 @@ impl IdentifiedSignature {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum Signature {
     Ed25519(ed25519_dalek::Signature),
 }
@@ -57,9 +59,31 @@ impl Signature {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub enum PublicKey {
     ED25519(ed25519_dalek::PublicKey),
     X25519(<hpke::kex::X25519 as KeyExchange>::PublicKey),
+}
+
+impl Eq for PublicKey {}
+
+impl PartialEq for PublicKey {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::ED25519(l0), Self::ED25519(r0)) => l0 == r0,
+            (Self::X25519(l0), Self::X25519(r0)) => l0.to_bytes() == r0.to_bytes(),
+            _ => false,
+        }
+    }
+}
+
+impl Hash for PublicKey {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            PublicKey::ED25519(key) => key.to_bytes().hash(state),
+            PublicKey::X25519(key) => key.to_bytes().hash(state),
+        }
+    }
 }
 
 impl Debug for PublicKey {
@@ -250,24 +274,28 @@ impl PrivateIdentityKey {
 
     pub fn notarize(
         &self,
+        id: u64,
         signer_timestamp: u64,
-        signature: IdentifiedSignature,
+        signatures: Vec<IdentifiedSignature>,
     ) -> Result<Notarization, Error> {
         let notary_timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("clock set in past")
             .as_secs();
+        let attestation = Attestation {
+            notary_timestamp,
+            signer_timestamp,
+            signatures,
+        };
 
-        let notarization_payload =
-            Notarization::format_payload(notary_timestamp, signer_timestamp, &signature);
+        let notarization_payload = Notarization::format_payload(id, &attestation);
 
         let notarization = self.sign(&notarization_payload)?;
 
         Ok(Notarization {
             notarization,
-            notary_timestamp,
-            signer_timestamp,
-            signature,
+            id,
+            attestation,
         })
     }
 }
@@ -306,57 +334,72 @@ pub struct Notarization {
     /// produced from the concatenation of the raw bytes of the rest of the
     /// structure, in big-endian encoding.
     pub notarization: IdentifiedSignature,
+    /// The unique ID of the notarization assigned by the notary.
+    pub id: u64,
+    /// The information the notary is attesting to.
+    pub attestation: Attestation,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Attestation {
     /// The time of the notarization as attested by the notary. Measured in
     /// seconds since January 1, 1970 00:00:00 UTC.
     pub notary_timestamp: u64,
-    /// The time of the signature as attested by the signer. Measured in
+    /// The time of the signatures as attested by the signer. Measured in
     /// seconds since January 1, 1970 00:00:00 UTC.
     pub signer_timestamp: u64,
-    /// The signature being notarized.
-    pub signature: IdentifiedSignature,
+    /// The signatures being notarized.
+    pub signatures: Vec<IdentifiedSignature>,
+}
+
+impl Attestation {
+    pub fn format_for_notarization<W: Write>(&self, notarization_payload: &mut W) {
+        // Timestamps
+        notarization_payload
+            .write_all(&self.notary_timestamp.to_be_bytes())
+            .unwrap();
+        notarization_payload
+            .write_all(&self.signer_timestamp.to_be_bytes())
+            .unwrap();
+
+        for signature in &self.signatures {
+            // Signer identity
+            notarization_payload
+                .write_all(signature.signed_by.domain.as_bytes())
+                .unwrap();
+            notarization_payload
+                .write_all(&signature.signed_by.key.to_bytes())
+                .unwrap();
+
+            // Signature
+            notarization_payload
+                .write_all(&signature.signature.to_bytes())
+                .unwrap();
+        }
+    }
 }
 
 impl Notarization {
     pub fn verify(&self, payload: &[u8]) -> Result<(), Error> {
-        self.signature.verify(payload)?;
+        for signature in &self.attestation.signatures {
+            signature.verify(payload)?;
+        }
 
-        let notarization = Self::format_payload(
-            self.notary_timestamp,
-            self.signer_timestamp,
-            &self.signature,
-        );
+        let notarization = Self::format_payload(self.id, &self.attestation);
         self.notarization.verify(&notarization)?;
 
         Ok(())
     }
 
-    pub fn format_payload(
-        notary_timestamp: u64,
-        signer_timestamp: u64,
-        signature: &IdentifiedSignature,
-    ) -> Vec<u8> {
+    pub fn format_payload(notarization_id: u64, attestation: &Attestation) -> Vec<u8> {
         let mut notarization_payload = Vec::new();
 
-        // Timestamps
+        // Notarization ID
         notarization_payload
-            .write_all(&notary_timestamp.to_be_bytes())
-            .unwrap();
-        notarization_payload
-            .write_all(&signer_timestamp.to_be_bytes())
+            .write_all(&notarization_id.to_be_bytes())
             .unwrap();
 
-        // Signer identity
-        notarization_payload
-            .write_all(signature.signed_by.domain.as_bytes())
-            .unwrap();
-        notarization_payload
-            .write_all(&signature.signed_by.key.to_bytes())
-            .unwrap();
-
-        // Signature
-        notarization_payload
-            .write_all(&signature.signature.to_bytes())
-            .unwrap();
+        attestation.format_for_notarization(&mut notarization_payload);
 
         notarization_payload
     }
@@ -428,6 +471,9 @@ fn notarization_test() {
         .expect("clock set in past")
         .as_secs();
     let signature = alice.sign(payload).unwrap();
-    let notarization = bob.notarize(alice_timestamp, signature).unwrap();
+    let notarization_id = 1; // Bob would generate this
+    let notarization = bob
+        .notarize(notarization_id, alice_timestamp, vec![signature])
+        .unwrap();
     notarization.verify(payload).unwrap();
 }
