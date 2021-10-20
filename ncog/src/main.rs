@@ -1,18 +1,81 @@
 use std::collections::HashMap;
 
-use bonsaidb::core::{
-    document::Document,
-    schema::{
-        Collection, CollectionName, InvalidNameError, MapResult, Name, Schema, SchemaName,
-        Schematic, View,
+use actionable::Actionable;
+use async_trait::async_trait;
+use bonsaidb::{
+    core::{
+        admin::password_config::PasswordConfig,
+        custodian_password::{RegistrationFinalization, RegistrationRequest},
+        custom_api::CustomApi,
+        document::Document,
+        permissions::{Dispatcher, Permissions},
+        schema::{
+            Collection, CollectionName, InvalidNameError, MapResult, Name, Schema, SchemaName,
+            Schematic, View,
+        },
     },
+    server::{Backend, ConnectedClient, CustomServer},
 };
 use ncog_encryption::{Attestation, PublicKey};
 use serde::{Deserialize, Serialize};
+use structopt::StructOpt;
 use time::OffsetDateTime;
 
-fn main() {
-    println!("Hello, world!");
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    match Args::from_args() {
+        Args::Db(command) => {
+            command
+                .execute(|storage| async move {
+                    storage.register_schema::<Keyserver>().await?;
+                    Ok(())
+                })
+                .await
+        }
+    }
+}
+
+#[derive(Debug, Dispatcher)]
+#[dispatcher(input = Request)]
+pub struct Ncog {
+    server: CustomServer<Self>,
+    client: ConnectedClient<Self>,
+}
+
+impl Backend for Ncog {
+    type CustomApi = Self;
+
+    type CustomApiDispatcher = Self;
+
+    fn dispatcher_for(
+        server: &CustomServer<Self>,
+        client: &ConnectedClient<Self>,
+    ) -> Self::CustomApiDispatcher {
+        Self {
+            server: server.clone(),
+            client: client.clone(),
+        }
+    }
+}
+
+impl CustomApi for Ncog {
+    type Request = Request;
+
+    type Response = Response;
+}
+
+// #[async_trait]
+// impl Dispatcher<Request> for Ncog {
+//     type Result = Result<Response, anyhow::Error>;
+
+//     async fn dispatch(&self, permissions: &Permissions, request: Request) -> Self::Result {
+
+//     }
+// }
+
+#[derive(StructOpt, Debug)]
+pub enum Args {
+    Db(bonsaidb::cli::Args),
 }
 
 #[derive(Debug)]
@@ -27,6 +90,7 @@ impl Schema for Keyserver {
         schema.define_collection::<Identity>()?;
         schema.define_collection::<IdentityKey>()?;
         schema.define_collection::<RegisteredNotarization>()?;
+        schema.define_collection::<PasswordConfig>()?;
         Ok(())
     }
 }
@@ -83,7 +147,7 @@ impl View for IdentityByHandle {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct IdentityKey {
     /// The identity that this key belongs to.
     pub identity_id: u64,
@@ -112,7 +176,7 @@ impl Collection for IdentityKey {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Hash, Eq, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, Hash, Eq, PartialEq)]
 pub enum EncryptedKeyMethod {
     /// The encrypted key is stored such that the private key derived through a
     /// OPAQUE-KE login session can decrypt the key.
@@ -205,29 +269,49 @@ impl Collection for RegisteredNotarization {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Actionable)]
+#[allow(clippy::large_enum_variant)]
 pub enum Request {
+    #[actionable(protection = "none")]
+    RegisterAccount {
+        handle: String,
+        password_request: RegistrationRequest,
+    },
+    #[actionable(protection = "none")]
+    ChangePassword {
+        password_request: RegistrationRequest,
+    },
+    #[actionable(protection = "none")]
+    FinishPasswordRegistration {
+        password_finalization: RegistrationFinalization,
+    },
+    #[actionable(protection = "none")]
     RegisterKey {
         expires_at: Option<OffsetDateTime>,
         encrypted_keys: Option<HashMap<EncryptedKeyMethod, Vec<u8>>>,
         public_signing_key: Option<PublicKey>,
         public_encryption_key: Option<PublicKey>,
     },
-    StoredEncryptedKey {
+    #[actionable(protection = "none")]
+    StoreEncryptedKey {
         id: u64,
         method: EncryptedKeyMethod,
         encrypted_key: Vec<u8>,
     },
-    RevokeKey {
-        id: u64,
-    },
+    #[actionable(protection = "none")]
+    RevokeKey { id: u64 },
+    #[actionable(protection = "none")]
     ListKeys,
+    // ListIdentities,
+    #[actionable(protection = "none")]
     GetKey(u64),
+    #[actionable(protection = "none")]
     ValidateSigningKey(PublicKey),
+    #[actionable(protection = "none")]
     ValidateEncryptionKey(PublicKey),
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Response {
     KeyRegistered {
         id: u64,
@@ -246,4 +330,137 @@ pub enum Response {
         expires_at: OffsetDateTime,
         revoked_at: Option<OffsetDateTime>,
     },
+}
+
+impl RequestDispatcher for Ncog {
+    type Output = Response;
+    type Error = anyhow::Error;
+}
+
+#[async_trait]
+impl RegisterKeyHandler for Ncog {
+    async fn handle(
+        &self,
+        _permissions: &Permissions,
+        expires_at: Option<OffsetDateTime>,
+        encrypted_keys: Option<HashMap<EncryptedKeyMethod, Vec<u8>>>,
+        public_signing_key: Option<PublicKey>,
+        public_encryption_key: Option<PublicKey>,
+    ) -> Result<Response, anyhow::Error> {
+        if let Some(user_id) = self.client.user_id().await {
+            todo!()
+        } else {
+            anyhow::bail!("cannot register a key before logging in")
+        }
+    }
+}
+
+#[async_trait]
+impl StoreEncryptedKeyHandler for Ncog {
+    async fn handle(
+        &self,
+        _permissions: &Permissions,
+        id: u64,
+        method: EncryptedKeyMethod,
+        encrypted_key: Vec<u8>,
+    ) -> Result<Response, anyhow::Error> {
+        if let Some(user_id) = self.client.user_id().await {
+            todo!()
+        } else {
+            anyhow::bail!("cannot store a key before logging in")
+        }
+    }
+}
+
+#[async_trait]
+impl RevokeKeyHandler for Ncog {
+    async fn handle(&self, _permissions: &Permissions, id: u64) -> Result<Response, anyhow::Error> {
+        if let Some(user_id) = self.client.user_id().await {
+            todo!()
+        } else {
+            anyhow::bail!("cannot revoke a key before logging in")
+        }
+    }
+}
+
+#[async_trait]
+impl GetKeyHandler for Ncog {
+    async fn handle(
+        &self,
+        _permissions: &Permissions,
+        key_id: u64,
+    ) -> Result<Response, anyhow::Error> {
+        if let Some(user_id) = self.client.user_id().await {
+            todo!()
+        } else {
+            anyhow::bail!("cannot get a key before logging in")
+        }
+    }
+}
+
+#[async_trait]
+impl ListKeysHandler for Ncog {
+    async fn handle(&self, _permissions: &Permissions) -> Result<Response, anyhow::Error> {
+        if let Some(user_id) = self.client.user_id().await {
+            todo!()
+        } else {
+            anyhow::bail!("cannot list keys before logging in")
+        }
+    }
+}
+
+#[async_trait]
+impl ValidateSigningKeyHandler for Ncog {
+    async fn handle(
+        &self,
+        _permissions: &Permissions,
+        public_key: PublicKey,
+    ) -> Result<Response, anyhow::Error> {
+        todo!()
+    }
+}
+
+#[async_trait]
+impl ValidateEncryptionKeyHandler for Ncog {
+    async fn handle(
+        &self,
+        _permissions: &Permissions,
+        public_key: PublicKey,
+    ) -> Result<Response, anyhow::Error> {
+        todo!()
+    }
+}
+
+#[async_trait]
+impl RegisterAccountHandler for Ncog {
+    async fn handle(
+        &self,
+        _permissions: &Permissions,
+        handle: String,
+        password_request: RegistrationRequest,
+    ) -> Result<Response, anyhow::Error> {
+        todo!()
+    }
+}
+
+#[async_trait]
+impl ChangePasswordHandler for Ncog {
+    async fn handle(
+        &self,
+        _permissions: &Permissions,
+        password_request: RegistrationRequest,
+    ) -> Result<Response, anyhow::Error> {
+        todo!()
+    }
+}
+
+#[async_trait]
+impl FinishPasswordRegistrationHandler for Ncog {
+    async fn handle(
+        &self,
+        _permissions: &Permissions,
+        password_response: RegistrationFinalization,
+    ) -> Result<Response, anyhow::Error> {
+        todo!()
+    }
 }

@@ -12,3 +12,8 @@ bonsaidb = { path = "../../bonsaidb/bonsaidb", features = [
 ncog-encryption = { path = "../ncog-encryption" }
 time = { version = "0.3", features = ["std", "formatting", "serde"] }
 serde = { version = "1", features = ["derive"] }
+structopt = "0.3"
+tokio = { version = "1", features = ["full"] }
+anyhow = "1"
+async-trait = "0.1"
+actionable = "0.1.0-dev.4"

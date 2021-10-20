@@ -59,7 +59,7 @@ impl Signature {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub enum PublicKey {
     ED25519(ed25519_dalek::PublicKey),
     X25519(<hpke::kex::X25519 as KeyExchange>::PublicKey),
