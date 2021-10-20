@@ -1,17 +1,17 @@
-use std::{convert::TryFrom, io::stdout, path::PathBuf};
+use std::{path::PathBuf, str::FromStr};
 
 use bonsaidb::{
     client::{fabruic::Certificate, url::Url, Client},
     core::{
-        custodian_password::{ClientConfig, ClientRegistration, RegistrationRequest},
+        custodian_password::{ClientConfig, ClientRegistration},
         PASSWORD_CONFIG,
     },
 };
 use crossterm::{
-    event::{Event, KeyCode, KeyEvent, KeyModifiers},
+    event::{Event, KeyCode, KeyModifiers},
     terminal::{disable_raw_mode, enable_raw_mode},
-    tty::IsTty,
 };
+use ncog_encryption::{PrivateKey, PublicKey, Signature};
 use structopt::StructOpt;
 
 use crate::server::{Ncog, Request, Response};
@@ -20,12 +20,12 @@ use crate::server::{Ncog, Request, Response};
 pub enum Args {
     Db(bonsaidb::cli::Args<Ncog>),
     Account(AccountArgs),
+    Key(KeyCommand),
 }
 
 #[derive(StructOpt, Debug)]
 pub struct AccountArgs {
     pub domain: Option<String>,
-    #[structopt(parse(from_os_str))]
     pub certificate: Option<PathBuf>,
     #[structopt(subcommand)]
     pub command: AccountCommand,
@@ -34,6 +34,7 @@ pub struct AccountArgs {
 #[derive(StructOpt, Debug)]
 pub enum AccountCommand {
     Register { username: String },
+    RegisterKey { path: PathBuf, username: String },
 }
 
 impl AccountArgs {
@@ -99,6 +100,123 @@ impl AccountArgs {
                 println!("User {} registered successfully.", username);
                 Ok(())
             }
+            AccountCommand::RegisterKey { .. } => todo!(),
+        }
+    }
+}
+
+#[derive(StructOpt, Debug)]
+pub enum KeyCommand {
+    New {
+        private_key_path: PathBuf,
+    },
+    ExportPublic {
+        private_key_path: PathBuf,
+        key_kind: KeyOperation,
+        export_path: Option<PathBuf>,
+    },
+    Sign {
+        private_key_path: PathBuf,
+        message: PathBuf,
+        signature_path: Option<PathBuf>,
+    },
+    Verify {
+        public_key_path: PathBuf,
+        message: PathBuf,
+        signature_path: PathBuf,
+    },
+}
+
+impl KeyCommand {
+    pub fn execute(self) -> anyhow::Result<()> {
+        match self {
+            KeyCommand::New { private_key_path } => {
+                if private_key_path.exists() {
+                    anyhow::bail!("file already exists at path '{:?}'", private_key_path);
+                }
+
+                let key = PrivateKey::random();
+                let pem = key.to_pem();
+
+                std::fs::write(&private_key_path, pem.as_bytes())?;
+
+                println!(
+                    "New key written to {:?}\n{}\n{}",
+                    private_key_path,
+                    key.public_signing_key().to_pem(),
+                    key.public_encryption_key().to_pem()
+                );
+
+                Ok(())
+            }
+            KeyCommand::ExportPublic {
+                private_key_path,
+                key_kind,
+                export_path,
+            } => {
+                let private_key = std::fs::read(&private_key_path)?;
+                let private_key = PrivateKey::from_pem(&private_key)?;
+                let public_key = match key_kind {
+                    KeyOperation::Sign => private_key.public_signing_key(),
+                    KeyOperation::Encrypt => private_key.public_encryption_key(),
+                };
+                if let Some(export_path) = export_path {
+                    std::fs::write(&export_path, public_key.to_pem().as_bytes())?;
+                } else {
+                    println!("{}", public_key.to_pem());
+                }
+                Ok(())
+            }
+            KeyCommand::Sign {
+                private_key_path,
+                message,
+                signature_path,
+            } => {
+                let private_key = std::fs::read(&private_key_path)?;
+                let private_key = PrivateKey::from_pem(&private_key)?;
+                let message = std::fs::read(&message)?;
+                let signature = private_key.sign(&message)?;
+                if let Some(signature_path) = signature_path {
+                    std::fs::write(&signature_path, signature.to_pem().as_bytes())?;
+                } else {
+                    println!("{}", signature.to_pem());
+                }
+                Ok(())
+            }
+            KeyCommand::Verify {
+                public_key_path,
+                message,
+                signature_path,
+            } => {
+                let public_key = std::fs::read(&public_key_path)?;
+                let public_key = PublicKey::from_pem(&public_key)?;
+                let signature = std::fs::read(&signature_path)?;
+                let signature = Signature::from_pem(&signature)?;
+                let message = std::fs::read(&message)?;
+                public_key.verify(&signature, &message)?;
+                println!("Signature verified successfully");
+                Ok(())
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum KeyOperation {
+    Sign,
+    Encrypt,
+}
+
+impl FromStr for KeyOperation {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s == "sign" || s == "signing" {
+            Ok(Self::Sign)
+        } else if s == "encrypt" || s == "encryption" {
+            Ok(Self::Encrypt)
+        } else {
+            anyhow::bail!("invalid key kind")
         }
     }
 }

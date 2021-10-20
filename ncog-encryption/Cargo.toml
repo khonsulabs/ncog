@@ -19,3 +19,4 @@ rand = "0.8"
 rand-07 = { version = "0.7", package = "rand" }
 sha2 = "0.9"
 serde = { version = "1", features = ["derive"] }
+pem = "1"

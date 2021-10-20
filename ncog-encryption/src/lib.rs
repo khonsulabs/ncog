@@ -1,4 +1,5 @@
 use std::{
+    convert::TryInto,
     fmt::Debug,
     hash::Hash,
     io::Write,
@@ -16,6 +17,7 @@ use hpke::{
     kex::{KeyExchange, X25519},
     Deserializable, EncappedKey, HpkeError, OpModeR, OpModeS, Serializable,
 };
+use pem::{Pem, PemError};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha512};
@@ -57,11 +59,34 @@ impl Signature {
             Signature::Ed25519(signature) => signature.to_bytes().to_vec(),
         }
     }
+
+    pub fn to_pem(&self) -> String {
+        match self {
+            Signature::Ed25519(signature) => pem::encode(&Pem {
+                tag: String::from("ED25519 SIGNATURE"),
+                contents: signature.to_bytes().to_vec(),
+            }),
+        }
+    }
+
+    pub fn from_pem(signature: &[u8]) -> Result<Self, Error> {
+        let signature = pem::parse(&signature)?;
+        if signature.tag == "ED25519 SIGNATURE" {
+            let signature: [u8; 64] = signature
+                .contents
+                .try_into()
+                .map_err(|_| Error::Message(String::from("signature length is incorrect")))?;
+            let signature = ed25519_dalek::Signature::new(signature);
+            Ok(Self::Ed25519(signature))
+        } else {
+            Err(Error::IncorrectKeyType)
+        }
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize)]
 pub enum PublicKey {
-    ED25519(ed25519_dalek::PublicKey),
+    Ed25519(ed25519_dalek::PublicKey),
     X25519(<hpke::kex::X25519 as KeyExchange>::PublicKey),
 }
 
@@ -70,7 +95,7 @@ impl Eq for PublicKey {}
 impl PartialEq for PublicKey {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::ED25519(l0), Self::ED25519(r0)) => l0 == r0,
+            (Self::Ed25519(l0), Self::Ed25519(r0)) => l0 == r0,
             (Self::X25519(l0), Self::X25519(r0)) => l0.to_bytes() == r0.to_bytes(),
             _ => false,
         }
@@ -80,7 +105,7 @@ impl PartialEq for PublicKey {
 impl Hash for PublicKey {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         match self {
-            PublicKey::ED25519(key) => key.to_bytes().hash(state),
+            PublicKey::Ed25519(key) => key.to_bytes().hash(state),
             PublicKey::X25519(key) => key.to_bytes().hash(state),
         }
     }
@@ -89,7 +114,7 @@ impl Hash for PublicKey {
 impl Debug for PublicKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::ED25519(arg0) => f.debug_tuple("ED25519").field(arg0).finish(),
+            Self::Ed25519(arg0) => f.debug_tuple("ED25519").field(arg0).finish(),
             Self::X25519(arg0) => f.debug_tuple("X25519").field(&arg0.to_bytes()).finish(),
         }
     }
@@ -140,7 +165,7 @@ impl PublicKey {
 
     pub fn verify(&self, signature: &Signature, payload: &[u8]) -> Result<(), Error> {
         match (self, signature) {
-            (PublicKey::ED25519(public_key), Signature::Ed25519(signature)) => {
+            (PublicKey::Ed25519(public_key), Signature::Ed25519(signature)) => {
                 public_key.verify(payload, signature).map_err(Error::from)
             }
             _ => Err(Error::IncorrectKeyType),
@@ -149,8 +174,35 @@ impl PublicKey {
 
     pub fn to_bytes(&self) -> Vec<u8> {
         match self {
-            PublicKey::ED25519(key) => key.to_bytes().to_vec(),
+            PublicKey::Ed25519(key) => key.to_bytes().to_vec(),
             PublicKey::X25519(key) => key.to_bytes().to_vec(),
+        }
+    }
+
+    pub fn to_pem(&self) -> String {
+        match self {
+            PublicKey::Ed25519(public_key) => pem::encode(&Pem {
+                tag: String::from("ED25519 PUBLIC KEY"),
+                contents: public_key.to_bytes().to_vec(),
+            }),
+            PublicKey::X25519(public_key) => pem::encode(&Pem {
+                tag: String::from("X25519 PUBLIC KEY"),
+                contents: public_key.to_bytes().to_vec(),
+            }),
+        }
+    }
+
+    pub fn from_pem(public_key: &[u8]) -> Result<Self, Error> {
+        let pem = pem::parse(&public_key)?;
+        if pem.tag == "ED25519 PUBLIC KEY" {
+            let public_key = ed25519_dalek::PublicKey::from_bytes(&pem.contents)?;
+            Ok(Self::Ed25519(public_key))
+        } else if pem.tag == "X25519 PUBLIC KEY" {
+            Ok(Self::X25519(
+                <X25519 as KeyExchange>::PublicKey::from_bytes(&pem.contents)?,
+            ))
+        } else {
+            Err(Error::IncorrectKeyType)
         }
     }
 }
@@ -173,7 +225,7 @@ impl PrivateKey {
 
     pub fn public_signing_key(&self) -> PublicKey {
         match self {
-            PrivateKey::ED25519(key) => PublicKey::ED25519(key.public),
+            PrivateKey::ED25519(key) => PublicKey::Ed25519(key.public),
         }
     }
 
@@ -201,6 +253,37 @@ impl PrivateKey {
                 let tag = AeadTag::from_bytes(&payload.tag)?;
                 context.open(&mut output, &payload.additional_data, &tag)?;
                 Ok(output)
+            }
+        }
+    }
+
+    pub fn to_pem(&self) -> String {
+        match self {
+            PrivateKey::ED25519(keypair) => pem::encode(&Pem {
+                tag: String::from("ED25519 PRIVATE KEY"),
+                contents: keypair.secret.to_bytes().to_vec(),
+            }),
+        }
+    }
+
+    pub fn from_pem(private_key: &[u8]) -> Result<Self, Error> {
+        let private_key = pem::parse(&private_key)?;
+        if private_key.tag == "ED25519 PRIVATE KEY" {
+            let secret = ed25519_dalek::SecretKey::from_bytes(&private_key.contents)?;
+            Ok(Self::ED25519(ed25519_dalek::Keypair {
+                public: ed25519_dalek::PublicKey::from(&secret),
+                secret,
+            }))
+        } else {
+            Err(Error::IncorrectKeyType)
+        }
+    }
+
+    pub fn sign(&self, message: &[u8]) -> Result<Signature, Error> {
+        match self {
+            PrivateKey::ED25519(private_key) => {
+                let signature = private_key.sign(message);
+                Ok(Signature::Ed25519(signature))
             }
         }
     }
@@ -258,18 +341,14 @@ impl PrivateIdentityKey {
     }
 
     pub fn sign(&self, message: &[u8]) -> Result<IdentifiedSignature, Error> {
-        match &self.key {
-            PrivateKey::ED25519(private_key) => {
-                let signature = private_key.sign(message);
-                Ok(IdentifiedSignature {
-                    signed_by: PublicIdentityKey {
-                        key: PublicKey::ED25519(private_key.public),
-                        domain: self.domain.clone(),
-                    },
-                    signature: Signature::Ed25519(signature),
-                })
-            }
-        }
+        let signature = self.key.sign(message)?;
+        Ok(IdentifiedSignature {
+            signed_by: PublicIdentityKey {
+                key: self.key.public_signing_key(),
+                domain: self.domain.clone(),
+            },
+            signature,
+        })
     }
 
     pub fn notarize(
@@ -318,6 +397,10 @@ pub enum Error {
     ED25519(#[from] ed25519_dalek::ed25519::Error),
     #[error("incorrect key type")]
     IncorrectKeyType,
+    #[error("PEM file error: {0}")]
+    Pem(#[from] PemError),
+    #[error("unexpected error: {0}")]
+    Message(String),
 }
 
 /// A notarization provides a method for a third party to attest to a signature

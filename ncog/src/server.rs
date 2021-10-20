@@ -241,6 +241,8 @@ impl ValidateEncryptionKeyHandler for Ncog {
     }
 }
 
+// TODO refactor this to take an initial IdentityKey so that if the process
+// fails, it can be resumed by verifying the public key matches.
 #[async_trait]
 impl RegisterAccountHandler for Ncog {
     async fn handle(
