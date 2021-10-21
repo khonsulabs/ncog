@@ -1,3 +1,20 @@
+#![forbid(unsafe_code)]
+#![warn(
+    // TODO clippy::cargo,
+    // TODO missing_docs,
+    // clippy::missing_docs_in_private_items,
+    clippy::nursery,
+    clippy::pedantic,
+    future_incompatible,
+    rust_2018_idioms,
+)]
+#![allow(
+    clippy::missing_errors_doc, // TODO clippy::missing_errors_doc
+    clippy::missing_panics_doc, // TODO clippy::missing_panics_doc
+    clippy::option_if_let_else,
+    clippy::module_name_repetitions,
+)]
+
 use std::{
     convert::TryInto,
     fmt::Debug,
@@ -49,17 +66,20 @@ impl IdentifiedSignature {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum Signature {
     Ed25519(ed25519_dalek::Signature),
 }
 
 impl Signature {
+    #[must_use]
     pub fn to_bytes(&self) -> Vec<u8> {
         match self {
             Signature::Ed25519(signature) => signature.to_bytes().to_vec(),
         }
     }
 
+    #[must_use]
     pub fn to_pem(&self) -> String {
         match self {
             Signature::Ed25519(signature) => pem::encode(&Pem {
@@ -85,6 +105,7 @@ impl Signature {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum PublicKey {
     Ed25519(ed25519_dalek::PublicKey),
     X25519(<hpke::kex::X25519 as KeyExchange>::PublicKey),
@@ -126,14 +147,14 @@ impl PublicKey {
         mut payload: Vec<u8>,
         subject: Vec<u8>,
         additional_data: Vec<u8>,
-        sender: Option<&PrivateKey>,
+        sender: Option<&SecretKey>,
     ) -> Result<EncryptedPayload, Error> {
         match self {
             PublicKey::X25519(public_key) => {
                 let mut csprng = OsRng::default();
                 let op_mode = if let Some(sender) = sender {
                     match sender {
-                        PrivateKey::ED25519(_) => {
+                        SecretKey::ED25519(_) => {
                             let keypair = sender.x25519_keypair();
 
                             OpModeS::Auth(keypair)
@@ -156,7 +177,7 @@ impl PublicKey {
                     tag: tag.to_bytes().to_vec(),
                     additional_data,
                     ciphertext: payload,
-                    sender: sender.map(|sender| sender.public_encryption_key()),
+                    sender: sender.map(SecretKey::public_encryption_key),
                 })
             }
             _ => Err(Error::IncorrectKeyType),
@@ -172,6 +193,7 @@ impl PublicKey {
         }
     }
 
+    #[must_use]
     pub fn to_bytes(&self) -> Vec<u8> {
         match self {
             PublicKey::Ed25519(key) => key.to_bytes().to_vec(),
@@ -179,6 +201,7 @@ impl PublicKey {
         }
     }
 
+    #[must_use]
     pub fn to_pem(&self) -> String {
         match self {
             PublicKey::Ed25519(public_key) => pem::encode(&Pem {
@@ -207,31 +230,36 @@ impl PublicKey {
     }
 }
 
-pub enum PrivateKey {
+#[non_exhaustive]
+pub enum SecretKey {
     ED25519(ed25519_dalek::Keypair),
 }
 
-impl PrivateKey {
+impl SecretKey {
+    #[must_use]
     pub fn random() -> Self {
         let mut csprng = rand_07::rngs::OsRng::default();
         Self::ED25519(ed25519_dalek::Keypair::generate(&mut csprng))
     }
 
+    #[must_use]
     pub fn public_encryption_key(&self) -> PublicKey {
         match self {
-            PrivateKey::ED25519(_) => PublicKey::X25519(self.x25519_public_key()),
+            SecretKey::ED25519(_) => PublicKey::X25519(self.x25519_public_key()),
         }
     }
 
+    #[must_use]
+    #[allow(clippy::missing_const_for_fn)]
     pub fn public_signing_key(&self) -> PublicKey {
         match self {
-            PrivateKey::ED25519(key) => PublicKey::Ed25519(key.public),
+            SecretKey::ED25519(key) => PublicKey::Ed25519(key.public),
         }
     }
 
     pub fn decrypt(&self, payload: &EncryptedPayload) -> Result<Vec<u8>, Error> {
         match self {
-            PrivateKey::ED25519(_) => {
+            SecretKey::ED25519(_) => {
                 let encapped_key = EncappedKey::from_bytes(&payload.encapsulated_key)?;
                 let op_mode = if let Some(sender) = &payload.sender {
                     OpModeR::Auth(match sender {
@@ -241,11 +269,11 @@ impl PrivateKey {
                 } else {
                     OpModeR::Base
                 };
-                let recipient_private_key = self.x25519_private_key();
+                let recipient_secret_key = self.x25519_secret_key();
                 let mut context =
                     hpke::setup_receiver::<ChaCha20Poly1305, HkdfSha384, X25519HkdfSha256>(
                         &op_mode,
-                        &recipient_private_key,
+                        &recipient_secret_key,
                         &encapped_key,
                         &payload.subject,
                     )?;
@@ -257,19 +285,20 @@ impl PrivateKey {
         }
     }
 
+    #[must_use]
     pub fn to_pem(&self) -> String {
         match self {
-            PrivateKey::ED25519(keypair) => pem::encode(&Pem {
+            SecretKey::ED25519(keypair) => pem::encode(&Pem {
                 tag: String::from("ED25519 PRIVATE KEY"),
                 contents: keypair.secret.to_bytes().to_vec(),
             }),
         }
     }
 
-    pub fn from_pem(private_key: &[u8]) -> Result<Self, Error> {
-        let private_key = pem::parse(&private_key)?;
-        if private_key.tag == "ED25519 PRIVATE KEY" {
-            let secret = ed25519_dalek::SecretKey::from_bytes(&private_key.contents)?;
+    pub fn from_pem(secret_key: &[u8]) -> Result<Self, Error> {
+        let secret_key = pem::parse(&secret_key)?;
+        if secret_key.tag == "ED25519 PRIVATE KEY" {
+            let secret = ed25519_dalek::SecretKey::from_bytes(&secret_key.contents)?;
             Ok(Self::ED25519(ed25519_dalek::Keypair {
                 public: ed25519_dalek::PublicKey::from(&secret),
                 secret,
@@ -281,8 +310,8 @@ impl PrivateKey {
 
     pub fn sign(&self, message: &[u8]) -> Result<Signature, Error> {
         match self {
-            PrivateKey::ED25519(private_key) => {
-                let signature = private_key.sign(message);
+            SecretKey::ED25519(secret_key) => {
+                let signature = secret_key.sign(message);
                 Ok(Signature::Ed25519(signature))
             }
         }
@@ -290,7 +319,7 @@ impl PrivateKey {
 
     fn x25519_public_key(&self) -> <X25519 as KeyExchange>::PublicKey {
         match self {
-            PrivateKey::ED25519(key) => <X25519 as KeyExchange>::PublicKey::from_bytes(
+            SecretKey::ED25519(key) => <X25519 as KeyExchange>::PublicKey::from_bytes(
                 &CompressedEdwardsY(*key.public.as_bytes())
                     .decompress()
                     .unwrap()
@@ -301,9 +330,9 @@ impl PrivateKey {
         }
     }
 
-    fn x25519_private_key(&self) -> <X25519 as KeyExchange>::PrivateKey {
+    fn x25519_secret_key(&self) -> <X25519 as KeyExchange>::PrivateKey {
         match self {
-            PrivateKey::ED25519(keypair) => <X25519 as KeyExchange>::PrivateKey::from_bytes(&{
+            SecretKey::ED25519(keypair) => <X25519 as KeyExchange>::PrivateKey::from_bytes(&{
                 let h = Sha512::digest(keypair.secret.as_bytes());
                 let h = Split::split(h).0;
                 <[u8; 32]>::from(h)
@@ -319,17 +348,17 @@ impl PrivateKey {
         <X25519 as KeyExchange>::PublicKey,
     ) {
         match self {
-            PrivateKey::ED25519(_) => (self.x25519_private_key(), self.x25519_public_key()),
+            SecretKey::ED25519(_) => (self.x25519_secret_key(), self.x25519_public_key()),
         }
     }
 }
 
-pub struct PrivateIdentityKey {
-    pub key: PrivateKey,
+pub struct SecretIdentityKey {
+    pub key: SecretKey,
     pub domain: String,
 }
 
-impl PrivateIdentityKey {
+impl SecretIdentityKey {
     pub fn encrypt(
         &self,
         payload: Vec<u8>,
@@ -379,7 +408,7 @@ impl PrivateIdentityKey {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct EncryptedPayload {
     pub subject: Vec<u8>,
     pub encapsulated_key: Vec<u8>,
@@ -387,6 +416,18 @@ pub struct EncryptedPayload {
     pub additional_data: Vec<u8>,
     pub ciphertext: Vec<u8>,
     pub sender: Option<PublicKey>,
+}
+
+impl EncryptedPayload {
+    // TODO This should probably be a better format than bincode.
+    #[must_use]
+    pub fn to_bytes(&self) -> Vec<u8> {
+        bincode::serialize(self).unwrap()
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, bincode::Error> {
+        bincode::deserialize(bytes)
+    }
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -474,6 +515,7 @@ impl Notarization {
         Ok(())
     }
 
+    #[must_use]
     pub fn format_payload(notarization_id: u64, attestation: &Attestation) -> Vec<u8> {
         let mut notarization_payload = Vec::new();
 
@@ -490,7 +532,7 @@ impl Notarization {
 
 #[test]
 fn anonymous_sender_encrypt_test() {
-    let bob = PrivateKey::random();
+    let bob = SecretKey::random();
     let bob_public_key = bob.public_encryption_key();
 
     let payload = bob_public_key
@@ -509,12 +551,12 @@ fn anonymous_sender_encrypt_test() {
 
 #[test]
 fn verified_sender_encrypt_test() {
-    let alice = PrivateIdentityKey {
-        key: PrivateKey::random(),
+    let alice = SecretIdentityKey {
+        key: SecretKey::random(),
         domain: String::from("acme"),
     };
 
-    let bob = PrivateKey::random();
+    let bob = SecretKey::random();
     let bob_public_key = bob.public_encryption_key();
 
     let mut payload = alice
@@ -539,13 +581,13 @@ fn verified_sender_encrypt_test() {
 fn notarization_test() {
     let payload = b"payload";
 
-    let alice = PrivateIdentityKey {
-        key: PrivateKey::random(),
+    let alice = SecretIdentityKey {
+        key: SecretKey::random(),
         domain: String::from("acme"),
     };
 
-    let bob = PrivateIdentityKey {
-        key: PrivateKey::random(),
+    let bob = SecretIdentityKey {
+        key: SecretKey::random(),
         domain: String::from("acme"),
     };
 

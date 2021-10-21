@@ -91,8 +91,8 @@ pub struct IdentityKey {
     pub expires_at: OffsetDateTime,
     /// The timestamp this key was revoked at, if any.
     pub revoked_at: Option<OffsetDateTime>,
-    /// Optionally stored encrypted versions of the private key.
-    pub encrypted_private_keys: Option<HashMap<EncryptedKeyMethod, Vec<u8>>>,
+    /// Optionally stored encrypted versions of the secret key.
+    pub encrypted_secret_keys: Option<HashMap<EncryptedKeyMethod, Vec<u8>>>,
     /// The public signing key, if this key can be used to sign.
     pub public_signing_key: Option<PublicKey>,
     /// The public encryption key, if this key can be used for encryption.
@@ -112,11 +112,11 @@ impl Collection for IdentityKey {
 
 #[derive(Clone, Debug, Serialize, Deserialize, Hash, Eq, PartialEq)]
 pub enum EncryptedKeyMethod {
-    /// The encrypted key is stored such that the private key derived through a
+    /// The encrypted key is stored such that the secret key derived through a
     /// OPAQUE-KE login session can decrypt the key.
     OpaqueKe,
     /// The encrypted key is stored encrypted using the PublicKey such that the
-    /// private backup key can decrypt the encrypted key. This mechanism is
+    /// secret backup key can decrypt the encrypted key. This mechanism is
     /// meant to be used for a physical backup, such as printing a piece of
     /// paper and storing it in a secure location.
     BackupKey(PublicKey),
