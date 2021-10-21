@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2018"
 
 [dependencies]
-bonsaidb = { path = "../../bonsaidb/bonsaidb", features = [
+bonsaidb = { git = "https://github.com/khonsulabs/bonsaidb.git", branch = "main", features = [
     "server-full",
     "client-full",
     "cli",
