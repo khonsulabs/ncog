@@ -1,5 +1,12 @@
 # ncog
 
+![ncog forbids unsafe code](https://img.shields.io/badge/unsafe-forbid-success)
+![ncog is considered experimental and unsupported](https://img.shields.io/badge/status-experimental-blueviolet)
+[![crate version](https://img.shields.io/crates/v/ncog.svg)](https://crates.io/crates/ncog)
+[![Live Build Status](https://img.shields.io/github/workflow/status/khonsulabs/ncog/Tests/main)](https://github.com/khonsulabs/ncog/actions?query=workflow:Tests)
+[![HTML Coverage Report for `main` branch](https://khonsulabs.github.io/ncog/coverage/badge.svg)](https://ncog.dev/coverage/)
+[![Documentation for `main` branch](https://img.shields.io/badge/docs-main-informational)](https://ncog.dev/main/ncog/)
+
 Ncog aims to be a self-hosted platform for privacy and data independence.
 
 **Warning:** Ncog is incredibly early in development. It has not been audited
