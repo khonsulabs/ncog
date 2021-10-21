@@ -16,7 +16,7 @@
 )]
 
 use std::{
-    convert::TryInto,
+    convert::{TryFrom, TryInto},
     fmt::Debug,
     hash::Hash,
     io::Write,
@@ -38,6 +38,7 @@ use pem::{Pem, PemError};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha512};
+use yasna::{ASN1Error, ASN1ErrorKind};
 
 pub struct PublishedKey {
     pub user: u64,
@@ -111,6 +112,27 @@ pub enum PublicKey {
     X25519(<hpke::kex::X25519 as KeyExchange>::PublicKey),
 }
 
+pub enum PublicKeyKind {
+    Ed25519 = 1,
+    X25519 = 2,
+}
+
+#[derive(thiserror::Error, Debug)]
+#[error("unsupported public key kind")]
+pub struct UnsupportedPublicKeyKind;
+
+impl TryFrom<i64> for PublicKeyKind {
+    type Error = UnsupportedPublicKeyKind;
+
+    fn try_from(value: i64) -> Result<Self, Self::Error> {
+        match value {
+            1 => Ok(Self::Ed25519),
+            2 => Ok(Self::X25519),
+            _ => Err(UnsupportedPublicKeyKind),
+        }
+    }
+}
+
 impl Eq for PublicKey {}
 
 impl PartialEq for PublicKey {
@@ -142,6 +164,26 @@ impl Debug for PublicKey {
 }
 
 impl PublicKey {
+    pub fn from_kind_and_bytes(kind: &PublicKeyKind, bytes: &[u8]) -> Result<Self, Error> {
+        match kind {
+            PublicKeyKind::Ed25519 => {
+                let public_key = ed25519_dalek::PublicKey::from_bytes(bytes)?;
+                Ok(Self::Ed25519(public_key))
+            }
+            PublicKeyKind::X25519 => Ok(Self::X25519(
+                <X25519 as KeyExchange>::PublicKey::from_bytes(bytes)?,
+            )),
+        }
+    }
+
+    #[must_use]
+    pub const fn kind(&self) -> PublicKeyKind {
+        match self {
+            PublicKey::Ed25519(_) => PublicKeyKind::Ed25519,
+            PublicKey::X25519(_) => PublicKeyKind::X25519,
+        }
+    }
+
     pub fn encrypt_for(
         &self,
         mut payload: Vec<u8>,
@@ -218,12 +260,9 @@ impl PublicKey {
     pub fn from_pem(public_key: &[u8]) -> Result<Self, Error> {
         let pem = pem::parse(&public_key)?;
         if pem.tag == "ED25519 PUBLIC KEY" {
-            let public_key = ed25519_dalek::PublicKey::from_bytes(&pem.contents)?;
-            Ok(Self::Ed25519(public_key))
+            Self::from_kind_and_bytes(&PublicKeyKind::Ed25519, &pem.contents)
         } else if pem.tag == "X25519 PUBLIC KEY" {
-            Ok(Self::X25519(
-                <X25519 as KeyExchange>::PublicKey::from_bytes(&pem.contents)?,
-            ))
+            Self::from_kind_and_bytes(&PublicKeyKind::X25519, &pem.contents)
         } else {
             Err(Error::IncorrectKeyType)
         }
@@ -422,11 +461,72 @@ impl EncryptedPayload {
     // TODO This should probably be a better format than bincode.
     #[must_use]
     pub fn to_bytes(&self) -> Vec<u8> {
-        bincode::serialize(self).unwrap()
+        yasna::construct_der(|writer| {
+            writer.write_sequence(|writer| {
+                writer.next().write_bytes(&self.subject);
+                writer.next().write_bytes(&self.encapsulated_key);
+                writer.next().write_bytes(&self.tag);
+                writer.next().write_bytes(&self.additional_data);
+                writer.next().write_bytes(&self.ciphertext);
+                if let Some(sender) = &self.sender {
+                    writer.next().write_enum(sender.kind() as i64);
+                    writer.next().write_bytes(&sender.to_bytes());
+                } else {
+                    writer.next().write_enum(-1);
+                }
+            });
+        })
     }
 
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self, bincode::Error> {
-        bincode::deserialize(bytes)
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
+        let mut our_error = None;
+        yasna::parse_der(bytes, |reader| {
+            reader.read_sequence(|reader| {
+                let subject = reader.next().read_bytes()?;
+                let encapsulated_key = reader.next().read_bytes()?;
+                let tag = reader.next().read_bytes()?;
+                let additional_data = reader.next().read_bytes()?;
+                let ciphertext = reader.next().read_bytes()?;
+                let sender_key_kind = reader.next().read_enum()?;
+                let sender = if sender_key_kind >= 0 {
+                    let sender_key_kind =
+                        PublicKeyKind::try_from(sender_key_kind).map_err(|err| {
+                            our_error = Some(Error::from(err));
+                            ASN1Error::new(ASN1ErrorKind::Invalid)
+                        })?;
+                    let sender_key = reader.next().read_bytes()?;
+                    Some(
+                        PublicKey::from_kind_and_bytes(&sender_key_kind, &sender_key).map_err(
+                            |err| {
+                                our_error = Some(err);
+                                ASN1Error::new(ASN1ErrorKind::Invalid)
+                            },
+                        )?,
+                    )
+                } else {
+                    None
+                };
+
+                Ok(Self {
+                    subject,
+                    encapsulated_key,
+                    tag,
+                    additional_data,
+                    ciphertext,
+                    sender,
+                })
+            })
+        })
+        .map_err(|err| {
+            // yasna doesn't let us bubble up our own error type. If we
+            // generated a more descriptive error, we will return it here
+            // instead of the yasna error.
+            if let Some(err) = our_error {
+                err
+            } else {
+                Error::from(err)
+            }
+        })
     }
 }
 
@@ -440,8 +540,17 @@ pub enum Error {
     IncorrectKeyType,
     #[error("PEM file error: {0}")]
     Pem(#[from] PemError),
+    #[error("PEM file error: {0}")]
+    Asn(#[from] ASN1Error),
     #[error("unexpected error: {0}")]
     Message(String),
+    #[error("unsupported public key kind")]
+    UnsupportedPublicKeyKind,
+}
+impl From<UnsupportedPublicKeyKind> for Error {
+    fn from(_: UnsupportedPublicKeyKind) -> Self {
+        Self::UnsupportedPublicKeyKind
+    }
 }
 
 /// A notarization provides a method for a third party to attest to a signature

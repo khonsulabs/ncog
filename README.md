@@ -9,9 +9,10 @@
 
 Ncog aims to be a self-hosted platform for privacy and data independence.
 
-**Warning:** Ncog is incredibly early in development. It has not been audited
-for security. Additionally, it relies on several cryptography libraries that
+> **Warning:** Ncog is incredibly early in development. Ncog is built using cryptography, and none of its authors claim to be cryptographers. It has not been audited. Additionally, it relies on several cryptography libraries that
 also have not been audited. As such, use this software at your own risk.
+> 
+> We welcome [all feedback, questions, and critiques](https://github.com/khonsulabs/ncog/issues/new).
 
 ## Goals
 
@@ -39,9 +40,9 @@ For public-key encryption, [`HPKE`][hpke] is utilized through the [`hpke`](https
 
 ### Why Ncog reuses the same secret key for signing and encryption
 
-Our public-key encryption method, [`HPKE`][hpke], supports a form of encryption that also authenticates the sender to the recipient. To us, it seems a silly argument that authentication should be kept separate from encryption when we have designed technologies that use the same key for both.
+Our public-key encryption method, [`HPKE`][hpke], supports a form of encryption that also authenticates the sender to the recipient. To us, it seems a silly argument that authentication should be kept separate from encryption when the cryptography community have designed a standard that use the same key for both purposes.
 
-When initially designing Ncog, we decided that most arguments that we discovered were centered around key management issues which Ncog is aiming to solve. We haven't found any compelling argument in favor of keeping separate keys.
+When initially designing Ncog, we investigated this common suggestion and concluded that most arguments that we discovered were centered around key management issues which Ncog is aiming to solve. We haven't found any compelling argument in favor of keeping separate keys. If you believe you have a compelling argument that isn't solved by our approach to secret management, please [file an issue with details](https://github.com/khonsulabs/ncog/issues/new).
 
 With all of that said, the APIs are designed to enable keeping your keys split if you desire to do so -- only publish one of the public keys when registering your key.
 
