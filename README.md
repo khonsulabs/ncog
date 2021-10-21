@@ -47,6 +47,27 @@ With all of that said, the APIs are designed to enable keeping your keys split i
 
 ## Command Line Interface
 
+### Server Management
+
+Install a self-signed certificate:
+```sh
+ncog db <server-data-path> server certificate install-self-signed --server-name <hostname>
+```
+
+Launch the server:
+```sh
+ncog db <server-data-path> server serve
+```
+
+### Account Management
+
+Register an account:
+```sh
+ncog <server-hostname> account register <username>
+```
+
+You will be prompted to enter your password twice for verification. The password is registered with the server using OPAQUE-KE, which provides a secure mechanism to verify your password without it ever leaving the machine you're entering it on.
+
 ### Key Management
 
 #### Creating a secret key
