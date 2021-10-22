@@ -3,12 +3,15 @@ use std::{
     str::FromStr,
 };
 
+use actionable::Permissions;
 use bonsaidb::{
     client::{fabruic::Certificate, url::Url, Client},
     core::{
+        connection::ServerConnection,
         custodian_password::{ClientConfig, ClientRegistration},
         PASSWORD_CONFIG,
     },
+    server::{Configuration, CustomServer},
 };
 use crossterm::{
     event::{Event, KeyCode, KeyModifiers},
@@ -16,12 +19,16 @@ use crossterm::{
 };
 use ncog_encryption::{EncryptedPayload, PublicKey, SecretKey, Signature};
 use structopt::StructOpt;
+use time::OffsetDateTime;
 
-use crate::server::{Ncog, Request, Response};
+use crate::{
+    schema::Keyserver,
+    server::{register_account, Ncog, Request, Response},
+};
 
 #[derive(StructOpt, Debug)]
 pub enum Args {
-    Db(bonsaidb::cli::Args<Ncog>),
+    Server(ServerArgs),
     Account(AccountArgs),
     Key(KeyCommand),
 }
@@ -29,15 +36,16 @@ pub enum Args {
 impl Args {
     pub async fn execute(self) -> Result<(), anyhow::Error> {
         match self {
-            Args::Db(command) => command.execute().await,
+            Args::Server(command) => command.execute().await,
             Args::Account(command) => command.execute().await,
-            Args::Key(command) => command.execute(),
+            Args::Key(command) => command.execute().await,
         }
     }
 }
 
 #[derive(StructOpt, Debug)]
 pub struct AccountArgs {
+    pub username: String,
     pub domain: Option<String>,
     pub certificate: Option<PathBuf>,
     #[structopt(subcommand)]
@@ -46,39 +54,36 @@ pub struct AccountArgs {
 
 #[derive(StructOpt, Debug)]
 pub enum AccountCommand {
-    Register { username: String },
-    RegisterKey { path: PathBuf, username: String },
+    Register,
+    RegisterKey { secret_key_path: PathBuf },
+}
+
+async fn connect_to_server(
+    domain: &str,
+    certificate: Option<&Path>,
+) -> anyhow::Result<Client<Ncog>> {
+    let mut client =
+        Client::build(Url::parse(&format!("bonsaidb://{}", domain))?).with_custom_api::<Ncog>();
+
+    if let Some(certificate) = &certificate {
+        let certificate = tokio::fs::read(certificate).await?;
+        client = client.with_certificate(Certificate::from_der(certificate)?);
+    }
+
+    Ok(client.finish().await?)
 }
 
 impl AccountArgs {
     pub async fn execute(self) -> anyhow::Result<()> {
-        let mut client = Client::build(Url::parse(&format!(
-            "bonsaidb://{}",
-            self.domain.as_deref().unwrap_or("ncog.id")
-        ))?)
-        .with_custom_api::<Ncog>();
-
-        if let Some(certificate) = &self.certificate {
-            let certificate = tokio::fs::read(certificate).await?;
-            client = client.with_certificate(Certificate::from_der(certificate)?);
-        }
-
-        let ncog = client.finish().await?;
+        let ncog = connect_to_server(
+            self.domain.as_deref().unwrap_or("ncog.id"),
+            self.certificate.as_deref(),
+        )
+        .await?;
 
         match self.command {
-            AccountCommand::Register { username } => {
-                let password = tokio::task::spawn_blocking::<_, anyhow::Result<String>>(|| loop {
-                    println!("Enter a password:\r");
-                    let password = read_line()?;
-                    println!("Enter the same password again:\r");
-                    let verify_password = read_line()?;
-                    if password == verify_password {
-                        break Ok(password);
-                    }
-
-                    eprintln!("Passwords did not match. Please try again.\n");
-                })
-                .await??;
+            AccountCommand::Register => {
+                let password = read_new_password_async().await?;
 
                 let (registration, request) = ClientRegistration::register(
                     &ClientConfig::new(PASSWORD_CONFIG, None)?,
@@ -86,7 +91,7 @@ impl AccountArgs {
                 )?;
                 let registration_response = match ncog
                     .send_api_request(Request::RegisterAccount {
-                        handle: username.clone(),
+                        handle: self.username.clone(),
                         password_request: request,
                     })
                     .await?
@@ -96,12 +101,13 @@ impl AccountArgs {
                 };
                 println!("Got one response");
 
-                let (file, password_finalization, export_key) =
+                // TODO optionally save the ClientFile to the user's preferences folder
+                let (_file, password_finalization, _export_key) =
                     registration.finish(registration_response)?;
 
                 match ncog
                     .send_api_request(Request::FinishPasswordRegistration {
-                        handle: username.clone(),
+                        handle: self.username.clone(),
                         password_finalization,
                     })
                     .await?
@@ -110,10 +116,38 @@ impl AccountArgs {
                     other => unreachable!("unexpected response: {:?}", other),
                 };
 
-                println!("User {} registered successfully.", username);
+                println!("User {} registered successfully.", self.username);
                 Ok(())
             }
-            AccountCommand::RegisterKey { .. } => todo!(),
+            AccountCommand::RegisterKey { secret_key_path } => {
+                let secret_key = std::fs::read(&secret_key_path)?;
+                let secret_key = SecretKey::from_pem(&secret_key)?;
+
+                println!("Enter your password:");
+                let password = tokio::task::spawn_blocking(read_line).await??;
+                ncog.login_with_password_str(&self.username, &password, None)
+                    .await?;
+
+                match ncog
+                    .send_api_request(Request::RegisterKey {
+                        handle: self.username,
+                        expires_at: None,
+                        encrypted_keys: None,
+                        public_keys: vec![
+                            secret_key.public_signing_key(),
+                            secret_key.public_encryption_key(),
+                        ],
+                    })
+                    .await?
+                {
+                    Response::KeyRegistered { id, expires_at, .. } => {
+                        println!("Registered key #{}, expires at {}", id, expires_at);
+                    }
+                    other => unreachable!("unexpected response: {:?}", other),
+                }
+
+                Ok(())
+            }
         }
     }
 }
@@ -165,10 +199,17 @@ pub enum KeyCommand {
         #[structopt(name = "out-file", short, long)]
         plaintext_path: PathBuf,
     },
+    Validate {
+        #[structopt(name = "public-key", short, long)]
+        public_key_path: PathBuf,
+        domain: Option<String>,
+        certificate: Option<PathBuf>,
+    },
 }
 
 impl KeyCommand {
-    pub fn execute(self) -> anyhow::Result<()> {
+    #[allow(clippy::too_many_lines)] // TODO refactor
+    pub async fn execute(self) -> anyhow::Result<()> {
         match self {
             KeyCommand::New { secret_key_path } => new_key(&secret_key_path),
             KeyCommand::ExportPublic {
@@ -263,6 +304,47 @@ impl KeyCommand {
                 }
                 Ok(())
             }
+            KeyCommand::Validate {
+                public_key_path,
+                domain,
+                certificate,
+            } => {
+                let public_key = std::fs::read(&public_key_path)?;
+                let public_key = PublicKey::from_pem(&public_key)?;
+
+                let domain = domain.as_deref().unwrap_or("ncog.id");
+                let ncog = connect_to_server(domain, certificate.as_deref()).await?;
+                match ncog
+                    .send_api_request(Request::ValidatePublicKey(public_key))
+                    .await?
+                {
+                    Response::KeyValidation {
+                        handle,
+                        registered_at,
+                        expires_at,
+                        revoked_at,
+                        ..
+                    } => {
+                        println!(
+                            "Key registered by {}@{} at {}",
+                            handle, domain, registered_at
+                        );
+
+                        if let Some(revoked_at) = revoked_at {
+                            anyhow::bail!("** KEY REVOKED AT {} **", revoked_at);
+                        }
+
+                        if OffsetDateTime::now_utc() < expires_at {
+                            println!("Valid until {}", expires_at);
+                            Ok(())
+                        } else {
+                            anyhow::bail!("** KEY EXPIRED AT {} **", expires_at);
+                        }
+                    }
+
+                    other => unreachable!("unexpected response: {:?}", other),
+                }
+            }
         }
     }
 }
@@ -326,6 +408,52 @@ impl FromStr for KeyOperation {
     }
 }
 
+#[derive(StructOpt, Debug)]
+pub struct ServerArgs {
+    pub server_data_path: PathBuf,
+    #[structopt(subcommand)]
+    pub command: ServerCommand,
+}
+
+#[derive(StructOpt, Debug)]
+pub enum ServerCommand {
+    CreateAdmin { username: String },
+    Certificate(bonsaidb::server::cli::certificate::Command),
+    Run(bonsaidb::server::cli::serve::Serve<Ncog>),
+}
+impl ServerArgs {
+    pub async fn execute(self) -> anyhow::Result<()> {
+        let server = CustomServer::open(
+            &self.server_data_path,
+            Configuration {
+                default_permissions: Permissions::allow_all(),
+                ..Configuration::default()
+            },
+        )
+        .await?;
+        match self.command {
+            ServerCommand::CreateAdmin { username } => {
+                let db = server.database::<Keyserver>("keyserver").await?;
+                let password = read_new_password_async().await?;
+                let (registration, request) = ClientRegistration::register(
+                    &ClientConfig::new(PASSWORD_CONFIG, None)?,
+                    password,
+                )?;
+                let response = register_account(&server, &db, username.clone(), request).await?;
+                let (_client_file, finalization, _export_key) = registration.finish(response)?;
+
+                server
+                    .finish_set_user_password(&username, finalization)
+                    .await?;
+                println!("User {} created.", username);
+                Ok(())
+            }
+            ServerCommand::Certificate(command) => command.execute(server).await,
+            ServerCommand::Run(command) => command.execute(server).await,
+        }
+    }
+}
+
 fn read_line() -> anyhow::Result<String> {
     let mut contents = String::new();
     enable_raw_mode()?;
@@ -347,6 +475,24 @@ fn read_line() -> anyhow::Result<String> {
     disable_raw_mode()?;
 
     Ok(contents)
+}
+
+async fn read_new_password_async() -> anyhow::Result<String> {
+    tokio::task::spawn_blocking(read_new_password).await?
+}
+
+fn read_new_password() -> anyhow::Result<String> {
+    loop {
+        println!("Enter a password:\r");
+        let password = read_line()?;
+        println!("Enter the same password again:\r");
+        let verify_password = read_line()?;
+        if password == verify_password {
+            break Ok(password);
+        }
+
+        eprintln!("Passwords did not match. Please try again.\n");
+    }
 }
 
 #[cfg(test)]

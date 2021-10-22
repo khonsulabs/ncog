@@ -1,14 +1,14 @@
-use std::collections::HashMap;
+use std::{borrow::Cow, collections::HashMap, convert::TryFrom};
 
 use bonsaidb::core::{
     admin::password_config::PasswordConfig,
     document::Document,
     schema::{
-        Collection, CollectionName, InvalidNameError, MapResult, Name, Schema, SchemaName,
-        Schematic, View,
+        Collection, CollectionName, InvalidNameError, Key, MapResult, Name, NamedCollection,
+        Schema, SchemaName, Schematic, View,
     },
 };
-use ncog_encryption::{Attestation, PublicKey};
+use ncog_encryption::{Attestation, Error, PublicKey, PublicKeyKind};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
@@ -55,6 +55,10 @@ impl Collection for Identity {
     }
 }
 
+impl NamedCollection for Identity {
+    type ByNameView = IdentityByHandle;
+}
+
 #[derive(Debug)]
 pub struct IdentityByHandle;
 
@@ -77,7 +81,7 @@ impl View for IdentityByHandle {
 
     fn map(&self, document: &Document<'_>) -> MapResult<Self::Key, Self::Value> {
         let identity = document.contents::<Identity>()?;
-        Ok(Some(document.emit_key(identity.handle)))
+        Ok(vec![document.emit_key(identity.handle)])
     }
 }
 
@@ -93,10 +97,8 @@ pub struct IdentityKey {
     pub revoked_at: Option<OffsetDateTime>,
     /// Optionally stored encrypted versions of the secret key.
     pub encrypted_secret_keys: Option<HashMap<EncryptedKeyMethod, Vec<u8>>>,
-    /// The public signing key, if this key can be used to sign.
-    pub public_signing_key: Option<PublicKey>,
-    /// The public encryption key, if this key can be used for encryption.
-    pub public_encryption_key: Option<PublicKey>,
+    /// The registered public keys.
+    pub public_keys: HashMap<PublicKeyKind, PublicKey>,
 }
 
 impl Collection for IdentityKey {
@@ -105,8 +107,8 @@ impl Collection for IdentityKey {
     }
 
     fn define_views(schema: &mut Schematic) -> Result<(), bonsaidb::core::Error> {
-        schema.define_view(NonRevokedPublicSigningKeys)?;
-        schema.define_view(NonRevokedPublicEncryptionKeys)
+        schema.define_view(NonRevokedPublicKeys)?;
+        Ok(())
     }
 }
 
@@ -123,11 +125,11 @@ pub enum EncryptedKeyMethod {
 }
 
 #[derive(Debug)]
-pub struct NonRevokedPublicSigningKeys;
+pub struct NonRevokedPublicKeys;
 
-impl View for NonRevokedPublicSigningKeys {
+impl View for NonRevokedPublicKeys {
     type Collection = IdentityKey;
-    type Key = Vec<u8>;
+    type Key = EncodedPublicKey;
     type Value = ();
 
     fn unique(&self) -> bool {
@@ -145,44 +147,49 @@ impl View for NonRevokedPublicSigningKeys {
     fn map(&self, document: &Document<'_>) -> MapResult<Self::Key, Self::Value> {
         let key = document.contents::<IdentityKey>()?;
         if key.revoked_at.is_some() {
-            Ok(None)
+            Ok(Vec::new())
         } else {
             Ok(key
-                .public_signing_key
-                .map(|key| document.emit_key(key.to_bytes())))
+                .public_keys
+                .iter()
+                .map(|(kind, key)| document.emit_key(EncodedPublicKey::new(*kind, key)))
+                .collect())
         }
     }
 }
 
-#[derive(Debug)]
-pub struct NonRevokedPublicEncryptionKeys;
+#[derive(Clone, Debug)]
+pub struct EncodedPublicKey(Vec<u8>);
 
-impl View for NonRevokedPublicEncryptionKeys {
-    type Collection = IdentityKey;
-    type Key = Vec<u8>;
-    type Value = ();
-
-    fn unique(&self) -> bool {
-        true
+impl Key for EncodedPublicKey {
+    fn as_big_endian_bytes(&self) -> anyhow::Result<std::borrow::Cow<'_, [u8]>> {
+        Ok(Cow::Borrowed(&self.0))
     }
 
-    fn version(&self) -> u64 {
-        0
+    fn from_big_endian_bytes(bytes: &[u8]) -> anyhow::Result<Self> {
+        Ok(Self(bytes.to_vec()))
     }
+}
 
-    fn name(&self) -> Result<bonsaidb::core::schema::Name, InvalidNameError> {
-        Name::new("public-encryption-keys")
+impl EncodedPublicKey {
+    pub fn new(kind: PublicKeyKind, key: &PublicKey) -> Self {
+        let mut view_key = key.to_bytes();
+        view_key.splice(0..0, (kind as u8).to_be_bytes());
+        Self(view_key)
     }
+}
 
-    fn map(&self, document: &Document<'_>) -> MapResult<Self::Key, Self::Value> {
-        let key = document.contents::<IdentityKey>()?;
-        if key.revoked_at.is_some() {
-            Ok(None)
-        } else {
-            Ok(key
-                .public_encryption_key
-                .map(|key| document.emit_key(key.to_bytes())))
-        }
+impl<'a> From<&'a PublicKey> for EncodedPublicKey {
+    fn from(public_key: &'a PublicKey) -> Self {
+        Self::new(public_key.kind(), public_key)
+    }
+}
+
+impl TryFrom<EncodedPublicKey> for PublicKey {
+    type Error = Error;
+    fn try_from(encoded: EncodedPublicKey) -> Result<Self, Error> {
+        let kind = PublicKeyKind::try_from(i64::from(encoded.0[0]))?;
+        Self::from_kind_and_bytes(&kind, &encoded.0[1..])
     }
 }
 

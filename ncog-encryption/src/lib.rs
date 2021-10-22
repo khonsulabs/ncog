@@ -112,6 +112,7 @@ pub enum PublicKey {
     X25519(<hpke::kex::X25519 as KeyExchange>::PublicKey),
 }
 
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PublicKeyKind {
     Ed25519 = 1,
     X25519 = 2,

@@ -4,19 +4,21 @@ use actionable::Actionable;
 use async_trait::async_trait;
 use bonsaidb::{
     core::{
-        connection::ServerConnection,
+        connection::{AccessPolicy, Connection, QueryKey, ServerConnection},
         custodian_password::{RegistrationFinalization, RegistrationRequest, RegistrationResponse},
         custom_api::CustomApi,
         permissions::{Dispatcher, Permissions},
-        schema::Collection,
+        schema::{Collection, NamedCollection},
     },
     server::{Backend, ConnectedClient, CustomServer, ServerDatabase},
 };
 use ncog_encryption::PublicKey;
 use serde::{Deserialize, Serialize};
-use time::OffsetDateTime;
+use time::{ext::NumericalDuration, OffsetDateTime};
 
-use crate::schema::{EncryptedKeyMethod, Identity, IdentityKey, Keyserver};
+use crate::schema::{
+    EncodedPublicKey, EncryptedKeyMethod, Identity, IdentityKey, Keyserver, NonRevokedPublicKeys,
+};
 
 #[derive(Debug, Dispatcher)]
 #[dispatcher(input = Request)]
@@ -77,11 +79,10 @@ pub enum Request {
     },
     #[actionable(protection = "none")]
     RegisterKey {
-        identity_id: u64,
+        handle: String,
         expires_at: Option<OffsetDateTime>,
         encrypted_keys: Option<HashMap<EncryptedKeyMethod, Vec<u8>>>,
-        public_signing_key: Option<PublicKey>,
-        public_encryption_key: Option<PublicKey>,
+        public_keys: Vec<PublicKey>,
     },
     #[actionable(protection = "none")]
     StoreEncryptedKey {
@@ -97,9 +98,7 @@ pub enum Request {
     #[actionable(protection = "none")]
     GetKey(u64),
     #[actionable(protection = "none")]
-    ValidateSigningKey(PublicKey),
-    #[actionable(protection = "none")]
-    ValidateEncryptionKey(PublicKey),
+    ValidatePublicKey(PublicKey),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -108,8 +107,8 @@ pub enum Response {
     FinishPasswordRegistation(RegistrationResponse),
     KeyRegistered {
         id: u64,
-        public_signing_key: Option<PublicKey>,
-        public_encryption_key: Option<PublicKey>,
+        public_keys: Vec<PublicKey>,
+        expires_at: OffsetDateTime,
     },
     RevokeKey {
         id: u64,
@@ -143,22 +142,42 @@ impl RegisterKeyHandler for Ncog {
     async fn handle(
         &self,
         _permissions: &Permissions,
-        identity_id: u64,
+        handle: String,
         expires_at: Option<OffsetDateTime>,
-        encrypted_keys: Option<HashMap<EncryptedKeyMethod, Vec<u8>>>,
-        public_signing_key: Option<PublicKey>,
-        public_encryption_key: Option<PublicKey>,
+        encrypted_secret_keys: Option<HashMap<EncryptedKeyMethod, Vec<u8>>>,
+        public_keys: Vec<PublicKey>,
     ) -> Result<Response, anyhow::Error> {
         if let Some(user_id) = self.client.user_id().await {
             let db = self.database().await?;
-            let identity = Identity::get(identity_id, &db)
+            let identity = Identity::load(&handle, &db)
                 .await?
                 .ok_or_else(|| anyhow::anyhow!("invalid identity id"))?;
             if identity.contents.user_id != Some(user_id) {
                 anyhow::bail!("invalid identity id");
             }
 
-            todo!()
+            let registered_at = OffsetDateTime::now_utc();
+            let expires_at = expires_at.unwrap_or_else(|| registered_at + 26_i64.weeks());
+
+            let registered_key = IdentityKey {
+                identity_id: identity.header.id,
+                registered_at,
+                encrypted_secret_keys,
+                expires_at,
+                revoked_at: None,
+                public_keys: public_keys
+                    .iter()
+                    .map(|key| (key.kind(), key.clone()))
+                    .collect(),
+            }
+            .insert_into(&db)
+            .await?;
+
+            Ok(Response::KeyRegistered {
+                id: registered_key.header.id,
+                public_keys,
+                expires_at,
+            })
         } else {
             anyhow::bail!("cannot register a key before logging in")
         }
@@ -220,24 +239,35 @@ impl ListKeysHandler for Ncog {
 }
 
 #[async_trait]
-impl ValidateSigningKeyHandler for Ncog {
+impl ValidatePublicKeyHandler for Ncog {
     async fn handle(
         &self,
         _permissions: &Permissions,
         public_key: PublicKey,
     ) -> Result<Response, anyhow::Error> {
-        todo!()
-    }
-}
-
-#[async_trait]
-impl ValidateEncryptionKeyHandler for Ncog {
-    async fn handle(
-        &self,
-        _permissions: &Permissions,
-        public_key: PublicKey,
-    ) -> Result<Response, anyhow::Error> {
-        todo!()
+        let db = self.database().await?;
+        let identity_key = db
+            .query_with_docs::<NonRevokedPublicKeys>(
+                Some(QueryKey::Matches(EncodedPublicKey::from(&public_key))),
+                AccessPolicy::UpdateBefore,
+            )
+            .await?;
+        if let Some(mapped_document) = identity_key.first() {
+            let identity_key = mapped_document.document.contents::<IdentityKey>()?;
+            let identity = Identity::get(identity_key.identity_id, &db)
+                .await?
+                // TODO this shouldn't error -- we should clean up this data.
+                .ok_or_else(|| anyhow::anyhow!("key not found"))?;
+            Ok(Response::KeyValidation {
+                key: public_key,
+                handle: identity.contents.handle,
+                registered_at: identity_key.registered_at,
+                expires_at: identity_key.expires_at,
+                revoked_at: identity_key.revoked_at,
+            })
+        } else {
+            anyhow::bail!("key not found")
+        }
     }
 }
 
@@ -251,27 +281,38 @@ impl RegisterAccountHandler for Ncog {
         handle: String,
         password_request: RegistrationRequest,
     ) -> Result<Response, anyhow::Error> {
-        // The identity handle space is more limited than the username space, so we need to reserve the identity first.
-        let identity = Identity {
-            user_id: None,
-            handle,
-            backup_keys: vec![],
-        };
         let db = self.database().await?;
-        // TODO catch unique key violation and anonymize it.
-        let mut identity = identity.insert_into(&db).await?;
-        // Create the user to get the user_id
-        // TODO catch unique key violation and anonymize it.
-        identity.contents.user_id = Some(self.server.create_user(&identity.contents.handle).await?);
-        identity.update(&db).await?;
 
         // Initiate the password process
-        let login_response = self
-            .server
-            .set_user_password(&identity.contents.handle, password_request)
-            .await?;
+        let login_response = register_account(&self.server, &db, handle, password_request).await?;
         Ok(Response::FinishPasswordRegistation(login_response))
     }
+}
+
+pub async fn register_account<S: ServerConnection, C: Connection>(
+    server: &S,
+    db: &C,
+    handle: String,
+    password_request: RegistrationRequest,
+) -> Result<RegistrationResponse, anyhow::Error> {
+    // The identity handle space is more limited than the username space, so we need to reserve the identity first.
+    let identity = Identity {
+        user_id: None,
+        handle,
+        backup_keys: vec![],
+    };
+    // TODO catch unique key violation and anonymize it.
+    let mut identity = identity.insert_into(db).await?;
+    // Create the user to get the user_id
+    // TODO catch unique key violation and anonymize it.
+    identity.contents.user_id = Some(server.create_user(&identity.contents.handle).await?);
+    identity.update(db).await?;
+
+    // Initiate the password process
+    let login_response = server
+        .set_user_password(&identity.contents.handle, password_request)
+        .await?;
+    Ok(login_response)
 }
 
 #[async_trait]
