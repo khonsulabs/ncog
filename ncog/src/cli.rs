@@ -3,15 +3,16 @@ use std::{
     str::FromStr,
 };
 
-use actionable::Permissions;
+use actionable::{Action, ActionNameList, Permissions, ResourceName, Statement};
 use bonsaidb::{
     client::{fabruic::Certificate, url::Url, Client},
     core::{
         connection::ServerConnection,
         custodian_password::{ClientConfig, ClientRegistration},
+        permissions::bonsai::{BonsaiAction, ServerAction},
         PASSWORD_CONFIG,
     },
-    server::{Configuration, CustomServer},
+    server::{Configuration, CustomServer, DefaultPermissions},
 };
 use crossterm::{
     event::{Event, KeyCode, KeyModifiers},
@@ -426,7 +427,15 @@ impl ServerArgs {
         let server = CustomServer::open(
             &self.server_data_path,
             Configuration {
-                default_permissions: Permissions::allow_all(),
+                default_permissions: DefaultPermissions::Permissions(Permissions::from(vec![
+                    Statement {
+                        resources: vec![ResourceName::any()],
+                        actions: ActionNameList::List(vec![
+                            BonsaiAction::Server(ServerAction::Connect).name(),
+                            BonsaiAction::Server(ServerAction::LoginWithPassword).name(),
+                        ]),
+                    },
+                ])),
                 ..Configuration::default()
             },
         )
