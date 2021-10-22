@@ -1,1 +1,1 @@
-initSidebarItems({"enum":[["Request",""],["Response",""]],"struct":[["Ncog",""]]});
+initSidebarItems({"enum":[["Request",""],["Response",""]],"fn":[["register_account",""]],"struct":[["Ncog",""]]});

@@ -300,6 +300,47 @@
 <span id="300">300</span>
 <span id="301">301</span>
 <span id="302">302</span>
+<span id="303">303</span>
+<span id="304">304</span>
+<span id="305">305</span>
+<span id="306">306</span>
+<span id="307">307</span>
+<span id="308">308</span>
+<span id="309">309</span>
+<span id="310">310</span>
+<span id="311">311</span>
+<span id="312">312</span>
+<span id="313">313</span>
+<span id="314">314</span>
+<span id="315">315</span>
+<span id="316">316</span>
+<span id="317">317</span>
+<span id="318">318</span>
+<span id="319">319</span>
+<span id="320">320</span>
+<span id="321">321</span>
+<span id="322">322</span>
+<span id="323">323</span>
+<span id="324">324</span>
+<span id="325">325</span>
+<span id="326">326</span>
+<span id="327">327</span>
+<span id="328">328</span>
+<span id="329">329</span>
+<span id="330">330</span>
+<span id="331">331</span>
+<span id="332">332</span>
+<span id="333">333</span>
+<span id="334">334</span>
+<span id="335">335</span>
+<span id="336">336</span>
+<span id="337">337</span>
+<span id="338">338</span>
+<span id="339">339</span>
+<span id="340">340</span>
+<span id="341">341</span>
+<span id="342">342</span>
+<span id="343">343</span>
 </pre><pre class="rust">
 <span class="kw">use</span> <span class="ident">std::collections::HashMap</span>;
 
@@ -307,19 +348,21 @@
 <span class="kw">use</span> <span class="ident">async_trait::async_trait</span>;
 <span class="kw">use</span> <span class="ident">bonsaidb</span>::{
     <span class="ident">core</span>::{
-        <span class="ident">connection::ServerConnection</span>,
+        <span class="ident">connection</span>::{<span class="ident">AccessPolicy</span>, <span class="ident">Connection</span>, <span class="ident">QueryKey</span>, <span class="ident">ServerConnection</span>},
         <span class="ident">custodian_password</span>::{<span class="ident">RegistrationFinalization</span>, <span class="ident">RegistrationRequest</span>, <span class="ident">RegistrationResponse</span>},
         <span class="ident">custom_api::CustomApi</span>,
         <span class="ident">permissions</span>::{<span class="ident">Dispatcher</span>, <span class="ident">Permissions</span>},
-        <span class="ident">schema::Collection</span>,
+        <span class="ident">schema</span>::{<span class="ident">Collection</span>, <span class="ident">NamedCollection</span>},
     },
     <span class="ident">server</span>::{<span class="ident">Backend</span>, <span class="ident">ConnectedClient</span>, <span class="ident">CustomServer</span>, <span class="ident">ServerDatabase</span>},
 };
 <span class="kw">use</span> <span class="ident">ncog_encryption::PublicKey</span>;
 <span class="kw">use</span> <span class="ident">serde</span>::{<span class="ident">Deserialize</span>, <span class="ident">Serialize</span>};
-<span class="kw">use</span> <span class="ident">time::OffsetDateTime</span>;
+<span class="kw">use</span> <span class="ident">time</span>::{<span class="ident">ext::NumericalDuration</span>, <span class="ident">OffsetDateTime</span>};
 
-<span class="kw">use</span> <span class="kw">crate</span><span class="ident">::schema</span>::{<span class="ident">EncryptedKeyMethod</span>, <span class="ident">Identity</span>, <span class="ident">IdentityKey</span>, <span class="ident">Keyserver</span>};
+<span class="kw">use</span> <span class="kw">crate</span><span class="ident">::schema</span>::{
+    <span class="ident">EncodedPublicKey</span>, <span class="ident">EncryptedKeyMethod</span>, <span class="ident">Identity</span>, <span class="ident">IdentityKey</span>, <span class="ident">Keyserver</span>, <span class="ident">NonRevokedPublicKeys</span>,
+};
 
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>, <span class="ident">Dispatcher</span>)]</span>
 <span class="attribute">#[<span class="ident">dispatcher</span>(<span class="ident">input</span> <span class="op">=</span> <span class="ident">Request</span>)]</span>
@@ -380,11 +423,10 @@
     },
     <span class="attribute">#[<span class="ident">actionable</span>(<span class="ident">protection</span> <span class="op">=</span> <span class="string">&quot;none&quot;</span>)]</span>
     <span class="ident">RegisterKey</span> {
-        <span class="ident">identity_id</span>: <span class="ident">u64</span>,
+        <span class="ident">handle</span>: <span class="ident">String</span>,
         <span class="ident">expires_at</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">OffsetDateTime</span><span class="op">&gt;</span>,
         <span class="ident">encrypted_keys</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">EncryptedKeyMethod</span>, <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span>,
-        <span class="ident">public_signing_key</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">PublicKey</span><span class="op">&gt;</span>,
-        <span class="ident">public_encryption_key</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">PublicKey</span><span class="op">&gt;</span>,
+        <span class="ident">public_keys</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">PublicKey</span><span class="op">&gt;</span>,
     },
     <span class="attribute">#[<span class="ident">actionable</span>(<span class="ident">protection</span> <span class="op">=</span> <span class="string">&quot;none&quot;</span>)]</span>
     <span class="ident">StoreEncryptedKey</span> {
@@ -400,9 +442,7 @@
     <span class="attribute">#[<span class="ident">actionable</span>(<span class="ident">protection</span> <span class="op">=</span> <span class="string">&quot;none&quot;</span>)]</span>
     <span class="ident">GetKey</span>(<span class="ident">u64</span>),
     <span class="attribute">#[<span class="ident">actionable</span>(<span class="ident">protection</span> <span class="op">=</span> <span class="string">&quot;none&quot;</span>)]</span>
-    <span class="ident">ValidateSigningKey</span>(<span class="ident">PublicKey</span>),
-    <span class="attribute">#[<span class="ident">actionable</span>(<span class="ident">protection</span> <span class="op">=</span> <span class="string">&quot;none&quot;</span>)]</span>
-    <span class="ident">ValidateEncryptionKey</span>(<span class="ident">PublicKey</span>),
+    <span class="ident">ValidatePublicKey</span>(<span class="ident">PublicKey</span>),
 }
 
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Debug</span>, <span class="ident">Serialize</span>, <span class="ident">Deserialize</span>)]</span>
@@ -411,8 +451,8 @@
     <span class="ident">FinishPasswordRegistation</span>(<span class="ident">RegistrationResponse</span>),
     <span class="ident">KeyRegistered</span> {
         <span class="ident">id</span>: <span class="ident">u64</span>,
-        <span class="ident">public_signing_key</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">PublicKey</span><span class="op">&gt;</span>,
-        <span class="ident">public_encryption_key</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">PublicKey</span><span class="op">&gt;</span>,
+        <span class="ident">public_keys</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">PublicKey</span><span class="op">&gt;</span>,
+        <span class="ident">expires_at</span>: <span class="ident">OffsetDateTime</span>,
     },
     <span class="ident">RevokeKey</span> {
         <span class="ident">id</span>: <span class="ident">u64</span>,
@@ -446,22 +486,42 @@
     <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">handle</span>(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         <span class="ident">_permissions</span>: <span class="kw-2">&amp;</span><span class="ident">Permissions</span>,
-        <span class="ident">identity_id</span>: <span class="ident">u64</span>,
+        <span class="ident">handle</span>: <span class="ident">String</span>,
         <span class="ident">expires_at</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">OffsetDateTime</span><span class="op">&gt;</span>,
-        <span class="ident">encrypted_keys</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">EncryptedKeyMethod</span>, <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span>,
-        <span class="ident">public_signing_key</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">PublicKey</span><span class="op">&gt;</span>,
-        <span class="ident">public_encryption_key</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">PublicKey</span><span class="op">&gt;</span>,
+        <span class="ident">encrypted_secret_keys</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">EncryptedKeyMethod</span>, <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span><span class="op">&gt;</span><span class="op">&gt;</span>,
+        <span class="ident">public_keys</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">PublicKey</span><span class="op">&gt;</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Response</span>, <span class="ident">anyhow::Error</span><span class="op">&gt;</span> {
         <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">user_id</span>) <span class="op">=</span> <span class="self">self</span>.<span class="ident">client</span>.<span class="ident">user_id</span>().<span class="kw">await</span> {
             <span class="kw">let</span> <span class="ident">db</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">database</span>().<span class="kw">await</span><span class="question-mark">?</span>;
-            <span class="kw">let</span> <span class="ident">identity</span> <span class="op">=</span> <span class="ident">Identity::get</span>(<span class="ident">identity_id</span>, <span class="kw-2">&amp;</span><span class="ident">db</span>)
+            <span class="kw">let</span> <span class="ident">identity</span> <span class="op">=</span> <span class="ident">Identity::load</span>(<span class="kw-2">&amp;</span><span class="ident">handle</span>, <span class="kw-2">&amp;</span><span class="ident">db</span>)
                 .<span class="kw">await</span><span class="question-mark">?</span>
                 .<span class="ident">ok_or_else</span>(<span class="op">|</span><span class="op">|</span> <span class="macro">anyhow::anyhow!</span>(<span class="string">&quot;invalid identity id&quot;</span>))<span class="question-mark">?</span>;
             <span class="kw">if</span> <span class="ident">identity</span>.<span class="ident">contents</span>.<span class="ident">user_id</span> <span class="op">!</span><span class="op">=</span> <span class="prelude-val">Some</span>(<span class="ident">user_id</span>) {
                 <span class="macro">anyhow::bail!</span>(<span class="string">&quot;invalid identity id&quot;</span>);
             }
 
-            <span class="macro">todo!</span>()
+            <span class="kw">let</span> <span class="ident">registered_at</span> <span class="op">=</span> <span class="ident">OffsetDateTime::now_utc</span>();
+            <span class="kw">let</span> <span class="ident">expires_at</span> <span class="op">=</span> <span class="ident">expires_at</span>.<span class="ident">unwrap_or_else</span>(<span class="op">|</span><span class="op">|</span> <span class="ident">registered_at</span> <span class="op">+</span> <span class="number">26_i64</span>.<span class="ident">weeks</span>());
+
+            <span class="kw">let</span> <span class="ident">registered_key</span> <span class="op">=</span> <span class="ident">IdentityKey</span> {
+                <span class="ident">identity_id</span>: <span class="ident">identity</span>.<span class="ident">header</span>.<span class="ident">id</span>,
+                <span class="ident">registered_at</span>,
+                <span class="ident">encrypted_secret_keys</span>,
+                <span class="ident">expires_at</span>,
+                <span class="ident">revoked_at</span>: <span class="prelude-val">None</span>,
+                <span class="ident">public_keys</span>: <span class="ident">public_keys</span>
+                    .<span class="ident">iter</span>()
+                    .<span class="ident">map</span>(<span class="op">|</span><span class="ident">key</span><span class="op">|</span> (<span class="ident">key</span>.<span class="ident">kind</span>(), <span class="ident">key</span>.<span class="ident">clone</span>()))
+                    .<span class="ident">collect</span>(),
+            }
+            .<span class="ident">insert_into</span>(<span class="kw-2">&amp;</span><span class="ident">db</span>)
+            .<span class="kw">await</span><span class="question-mark">?</span>;
+
+            <span class="prelude-val">Ok</span>(<span class="ident">Response::KeyRegistered</span> {
+                <span class="ident">id</span>: <span class="ident">registered_key</span>.<span class="ident">header</span>.<span class="ident">id</span>,
+                <span class="ident">public_keys</span>,
+                <span class="ident">expires_at</span>,
+            })
         } <span class="kw">else</span> {
             <span class="macro">anyhow::bail!</span>(<span class="string">&quot;cannot register a key before logging in&quot;</span>)
         }
@@ -523,24 +583,35 @@
 }
 
 <span class="attribute">#[<span class="ident">async_trait</span>]</span>
-<span class="kw">impl</span> <span class="ident">ValidateSigningKeyHandler</span> <span class="kw">for</span> <span class="ident">Ncog</span> {
+<span class="kw">impl</span> <span class="ident">ValidatePublicKeyHandler</span> <span class="kw">for</span> <span class="ident">Ncog</span> {
     <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">handle</span>(
         <span class="kw-2">&amp;</span><span class="self">self</span>,
         <span class="ident">_permissions</span>: <span class="kw-2">&amp;</span><span class="ident">Permissions</span>,
         <span class="ident">public_key</span>: <span class="ident">PublicKey</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Response</span>, <span class="ident">anyhow::Error</span><span class="op">&gt;</span> {
-        <span class="macro">todo!</span>()
-    }
-}
-
-<span class="attribute">#[<span class="ident">async_trait</span>]</span>
-<span class="kw">impl</span> <span class="ident">ValidateEncryptionKeyHandler</span> <span class="kw">for</span> <span class="ident">Ncog</span> {
-    <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">handle</span>(
-        <span class="kw-2">&amp;</span><span class="self">self</span>,
-        <span class="ident">_permissions</span>: <span class="kw-2">&amp;</span><span class="ident">Permissions</span>,
-        <span class="ident">public_key</span>: <span class="ident">PublicKey</span>,
-    ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Response</span>, <span class="ident">anyhow::Error</span><span class="op">&gt;</span> {
-        <span class="macro">todo!</span>()
+        <span class="kw">let</span> <span class="ident">db</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">database</span>().<span class="kw">await</span><span class="question-mark">?</span>;
+        <span class="kw">let</span> <span class="ident">identity_key</span> <span class="op">=</span> <span class="ident">db</span>
+            .<span class="ident">query_with_docs</span>::<span class="op">&lt;</span><span class="ident">NonRevokedPublicKeys</span><span class="op">&gt;</span>(
+                <span class="prelude-val">Some</span>(<span class="ident">QueryKey::Matches</span>(<span class="ident">EncodedPublicKey::from</span>(<span class="kw-2">&amp;</span><span class="ident">public_key</span>))),
+                <span class="ident">AccessPolicy::UpdateBefore</span>,
+            )
+            .<span class="kw">await</span><span class="question-mark">?</span>;
+        <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">mapped_document</span>) <span class="op">=</span> <span class="ident">identity_key</span>.<span class="ident">first</span>() {
+            <span class="kw">let</span> <span class="ident">identity_key</span> <span class="op">=</span> <span class="ident">mapped_document</span>.<span class="ident">document</span>.<span class="ident">contents</span>::<span class="op">&lt;</span><span class="ident">IdentityKey</span><span class="op">&gt;</span>()<span class="question-mark">?</span>;
+            <span class="kw">let</span> <span class="ident">identity</span> <span class="op">=</span> <span class="ident">Identity::get</span>(<span class="ident">identity_key</span>.<span class="ident">identity_id</span>, <span class="kw-2">&amp;</span><span class="ident">db</span>)
+                .<span class="kw">await</span><span class="question-mark">?</span>
+                <span class="comment">// TODO this shouldn&#39;t error -- we should clean up this data.</span>
+                .<span class="ident">ok_or_else</span>(<span class="op">|</span><span class="op">|</span> <span class="macro">anyhow::anyhow!</span>(<span class="string">&quot;key not found&quot;</span>))<span class="question-mark">?</span>;
+            <span class="prelude-val">Ok</span>(<span class="ident">Response::KeyValidation</span> {
+                <span class="ident">key</span>: <span class="ident">public_key</span>,
+                <span class="ident">handle</span>: <span class="ident">identity</span>.<span class="ident">contents</span>.<span class="ident">handle</span>,
+                <span class="ident">registered_at</span>: <span class="ident">identity_key</span>.<span class="ident">registered_at</span>,
+                <span class="ident">expires_at</span>: <span class="ident">identity_key</span>.<span class="ident">expires_at</span>,
+                <span class="ident">revoked_at</span>: <span class="ident">identity_key</span>.<span class="ident">revoked_at</span>,
+            })
+        } <span class="kw">else</span> {
+            <span class="macro">anyhow::bail!</span>(<span class="string">&quot;key not found&quot;</span>)
+        }
     }
 }
 
@@ -554,27 +625,38 @@
         <span class="ident">handle</span>: <span class="ident">String</span>,
         <span class="ident">password_request</span>: <span class="ident">RegistrationRequest</span>,
     ) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Response</span>, <span class="ident">anyhow::Error</span><span class="op">&gt;</span> {
-        <span class="comment">// The identity handle space is more limited than the username space, so we need to reserve the identity first.</span>
-        <span class="kw">let</span> <span class="ident">identity</span> <span class="op">=</span> <span class="ident">Identity</span> {
-            <span class="ident">user_id</span>: <span class="prelude-val">None</span>,
-            <span class="ident">handle</span>,
-            <span class="ident">backup_keys</span>: <span class="macro">vec!</span>[],
-        };
         <span class="kw">let</span> <span class="ident">db</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">database</span>().<span class="kw">await</span><span class="question-mark">?</span>;
-        <span class="comment">// TODO catch unique key violation and anonymize it.</span>
-        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">identity</span> <span class="op">=</span> <span class="ident">identity</span>.<span class="ident">insert_into</span>(<span class="kw-2">&amp;</span><span class="ident">db</span>).<span class="kw">await</span><span class="question-mark">?</span>;
-        <span class="comment">// Create the user to get the user_id</span>
-        <span class="comment">// TODO catch unique key violation and anonymize it.</span>
-        <span class="ident">identity</span>.<span class="ident">contents</span>.<span class="ident">user_id</span> <span class="op">=</span> <span class="prelude-val">Some</span>(<span class="self">self</span>.<span class="ident">server</span>.<span class="ident">create_user</span>(<span class="kw-2">&amp;</span><span class="ident">identity</span>.<span class="ident">contents</span>.<span class="ident">handle</span>).<span class="kw">await</span><span class="question-mark">?</span>);
-        <span class="ident">identity</span>.<span class="ident">update</span>(<span class="kw-2">&amp;</span><span class="ident">db</span>).<span class="kw">await</span><span class="question-mark">?</span>;
 
         <span class="comment">// Initiate the password process</span>
-        <span class="kw">let</span> <span class="ident">login_response</span> <span class="op">=</span> <span class="self">self</span>
-            .<span class="ident">server</span>
-            .<span class="ident">set_user_password</span>(<span class="kw-2">&amp;</span><span class="ident">identity</span>.<span class="ident">contents</span>.<span class="ident">handle</span>, <span class="ident">password_request</span>)
-            .<span class="kw">await</span><span class="question-mark">?</span>;
+        <span class="kw">let</span> <span class="ident">login_response</span> <span class="op">=</span> <span class="ident">register_account</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">server</span>, <span class="kw-2">&amp;</span><span class="ident">db</span>, <span class="ident">handle</span>, <span class="ident">password_request</span>).<span class="kw">await</span><span class="question-mark">?</span>;
         <span class="prelude-val">Ok</span>(<span class="ident">Response::FinishPasswordRegistation</span>(<span class="ident">login_response</span>))
     }
+}
+
+<span class="kw">pub</span> <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">register_account</span><span class="op">&lt;</span><span class="ident">S</span>: <span class="ident">ServerConnection</span>, <span class="ident">C</span>: <span class="ident">Connection</span><span class="op">&gt;</span>(
+    <span class="ident">server</span>: <span class="kw-2">&amp;</span><span class="ident">S</span>,
+    <span class="ident">db</span>: <span class="kw-2">&amp;</span><span class="ident">C</span>,
+    <span class="ident">handle</span>: <span class="ident">String</span>,
+    <span class="ident">password_request</span>: <span class="ident">RegistrationRequest</span>,
+) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">RegistrationResponse</span>, <span class="ident">anyhow::Error</span><span class="op">&gt;</span> {
+    <span class="comment">// The identity handle space is more limited than the username space, so we need to reserve the identity first.</span>
+    <span class="kw">let</span> <span class="ident">identity</span> <span class="op">=</span> <span class="ident">Identity</span> {
+        <span class="ident">user_id</span>: <span class="prelude-val">None</span>,
+        <span class="ident">handle</span>,
+        <span class="ident">backup_keys</span>: <span class="macro">vec!</span>[],
+    };
+    <span class="comment">// TODO catch unique key violation and anonymize it.</span>
+    <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">identity</span> <span class="op">=</span> <span class="ident">identity</span>.<span class="ident">insert_into</span>(<span class="ident">db</span>).<span class="kw">await</span><span class="question-mark">?</span>;
+    <span class="comment">// Create the user to get the user_id</span>
+    <span class="comment">// TODO catch unique key violation and anonymize it.</span>
+    <span class="ident">identity</span>.<span class="ident">contents</span>.<span class="ident">user_id</span> <span class="op">=</span> <span class="prelude-val">Some</span>(<span class="ident">server</span>.<span class="ident">create_user</span>(<span class="kw-2">&amp;</span><span class="ident">identity</span>.<span class="ident">contents</span>.<span class="ident">handle</span>).<span class="kw">await</span><span class="question-mark">?</span>);
+    <span class="ident">identity</span>.<span class="ident">update</span>(<span class="ident">db</span>).<span class="kw">await</span><span class="question-mark">?</span>;
+
+    <span class="comment">// Initiate the password process</span>
+    <span class="kw">let</span> <span class="ident">login_response</span> <span class="op">=</span> <span class="ident">server</span>
+        .<span class="ident">set_user_password</span>(<span class="kw-2">&amp;</span><span class="ident">identity</span>.<span class="ident">contents</span>.<span class="ident">handle</span>, <span class="ident">password_request</span>)
+        .<span class="kw">await</span><span class="question-mark">?</span>;
+    <span class="prelude-val">Ok</span>(<span class="ident">login_response</span>)
 }
 
 <span class="attribute">#[<span class="ident">async_trait</span>]</span>

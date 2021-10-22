@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["ncog"] = [{"text":"impl Key for <a class=\"struct\" href=\"ncog/schema/struct.EncodedPublicKey.html\" title=\"struct ncog::schema::EncodedPublicKey\">EncodedPublicKey</a>","synthetic":false,"types":["ncog::schema::EncodedPublicKey"]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

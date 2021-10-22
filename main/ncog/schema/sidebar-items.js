@@ -1,1 +1,1 @@
-initSidebarItems({"constant":[["NCOG_AUTHORITY",""]],"enum":[["EncryptedKeyMethod",""]],"struct":[["BackupKey",""],["Identity",""],["IdentityByHandle",""],["IdentityKey",""],["Keyserver",""],["NonRevokedPublicEncryptionKeys",""],["NonRevokedPublicSigningKeys",""],["RegisteredNotarization",""]]});
+initSidebarItems({"constant":[["NCOG_AUTHORITY",""]],"enum":[["EncryptedKeyMethod",""]],"struct":[["BackupKey",""],["EncodedPublicKey",""],["Identity",""],["IdentityByHandle",""],["IdentityKey",""],["Keyserver",""],["NonRevokedPublicKeys",""],["RegisteredNotarization",""]]});

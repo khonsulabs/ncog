@@ -1,1 +1,1 @@
-initSidebarItems({"enum":[["AccountCommand",""],["Args",""],["KeyCommand",""],["KeyOperation",""]],"fn":[["export_public_key",""],["new_key",""],["read_line",""]],"struct":[["AccountArgs",""]]});
+initSidebarItems({"enum":[["AccountCommand",""],["Args",""],["KeyCommand",""],["KeyOperation",""],["ServerCommand",""]],"fn":[["connect_to_server",""],["export_public_key",""],["new_key",""],["read_line",""],["read_new_password",""],["read_new_password_async",""]],"struct":[["AccountArgs",""],["ServerArgs",""]]});

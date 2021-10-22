@@ -711,6 +711,7 @@
 <span id="711">711</span>
 <span id="712">712</span>
 <span id="713">713</span>
+<span id="714">714</span>
 </pre><pre class="rust">
 <span class="attribute">#![<span class="ident">forbid</span>(<span class="ident">unsafe_code</span>)]</span>
 <span class="attribute">#![<span class="ident">warn</span>(
@@ -826,6 +827,7 @@
     <span class="ident">X25519</span>(<span class="op">&lt;</span><span class="ident">hpke::kex::X25519</span> <span class="kw">as</span> <span class="ident">KeyExchange</span><span class="op">&gt;</span><span class="ident">::PublicKey</span>),
 }
 
+<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Copy</span>, <span class="ident">Debug</span>, <span class="ident">Hash</span>, <span class="ident">PartialEq</span>, <span class="ident">Eq</span>, <span class="ident">Serialize</span>, <span class="ident">Deserialize</span>)]</span>
 <span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">PublicKeyKind</span> {
     <span class="ident">Ed25519</span> <span class="op">=</span> <span class="number">1</span>,
     <span class="ident">X25519</span> <span class="op">=</span> <span class="number">2</span>,
