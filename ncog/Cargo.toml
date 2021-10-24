@@ -18,6 +18,7 @@ anyhow = "1"
 async-trait = "0.1"
 actionable = "0.1.0-dev.5"
 crossterm = "0.22"
+thiserror = "1"
 
 [dev-dependencies]
 tempfile = "3"

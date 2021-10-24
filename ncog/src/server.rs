@@ -10,9 +10,9 @@ use bonsaidb::{
         permissions::{Dispatcher, Permissions},
         schema::{Collection, NamedCollection},
     },
-    server::{Backend, ConnectedClient, CustomServer, ServerDatabase},
+    server::{Backend, BackendError, ConnectedClient, CustomServer, ServerDatabase},
 };
-use ncog_encryption::PublicKey;
+use ncog_encryption::{Error, PublicKey};
 use serde::{Deserialize, Serialize};
 use time::{ext::NumericalDuration, OffsetDateTime};
 
@@ -56,8 +56,26 @@ impl Backend for Ncog {
 
 impl CustomApi for Ncog {
     type Request = Request;
-
     type Response = Response;
+    type Error = KeyserverError;
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, thiserror::Error)]
+pub enum KeyserverError {
+    #[error("authentication required")]
+    AuthenticationRequired,
+    #[error("unknown identity")]
+    UnknownIdentity,
+    #[error("unknown key")]
+    UnknownKey,
+    #[error("encryption error: {0}")]
+    Encryption(String),
+}
+
+impl From<Error> for KeyserverError {
+    fn from(err: Error) -> Self {
+        Self::Encryption(err.to_string())
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Actionable)]
@@ -134,7 +152,7 @@ impl Ncog {
 
 impl RequestDispatcher for Ncog {
     type Output = Response;
-    type Error = anyhow::Error;
+    type Error = BackendError<KeyserverError>;
 }
 
 #[async_trait]
@@ -146,14 +164,14 @@ impl RegisterKeyHandler for Ncog {
         expires_at: Option<OffsetDateTime>,
         encrypted_secret_keys: Option<HashMap<EncryptedKeyMethod, Vec<u8>>>,
         public_keys: Vec<PublicKey>,
-    ) -> Result<Response, anyhow::Error> {
+    ) -> Result<Response, BackendError<KeyserverError>> {
         if let Some(user_id) = self.client.user_id().await {
             let db = self.database().await?;
             let identity = Identity::load(&handle, &db)
                 .await?
-                .ok_or_else(|| anyhow::anyhow!("invalid identity id"))?;
+                .ok_or(BackendError::Backend(KeyserverError::UnknownIdentity))?;
             if identity.contents.user_id != Some(user_id) {
-                anyhow::bail!("invalid identity id");
+                return Err(BackendError::Backend(KeyserverError::UnknownIdentity));
             }
 
             let registered_at = OffsetDateTime::now_utc();
@@ -179,7 +197,9 @@ impl RegisterKeyHandler for Ncog {
                 expires_at,
             })
         } else {
-            anyhow::bail!("cannot register a key before logging in")
+            Err(BackendError::Backend(
+                KeyserverError::AuthenticationRequired,
+            ))
         }
     }
 }
@@ -192,22 +212,30 @@ impl StoreEncryptedKeyHandler for Ncog {
         id: u64,
         method: EncryptedKeyMethod,
         encrypted_key: Vec<u8>,
-    ) -> Result<Response, anyhow::Error> {
+    ) -> Result<Response, BackendError<KeyserverError>> {
         if let Some(user_id) = self.client.user_id().await {
             todo!()
         } else {
-            anyhow::bail!("cannot store a key before logging in")
+            Err(BackendError::Backend(
+                KeyserverError::AuthenticationRequired,
+            ))
         }
     }
 }
 
 #[async_trait]
 impl RevokeKeyHandler for Ncog {
-    async fn handle(&self, _permissions: &Permissions, id: u64) -> Result<Response, anyhow::Error> {
+    async fn handle(
+        &self,
+        _permissions: &Permissions,
+        id: u64,
+    ) -> Result<Response, BackendError<KeyserverError>> {
         if let Some(user_id) = self.client.user_id().await {
             todo!()
         } else {
-            anyhow::bail!("cannot revoke a key before logging in")
+            Err(BackendError::Backend(
+                KeyserverError::AuthenticationRequired,
+            ))
         }
     }
 }
@@ -218,22 +246,29 @@ impl GetKeyHandler for Ncog {
         &self,
         _permissions: &Permissions,
         key_id: u64,
-    ) -> Result<Response, anyhow::Error> {
+    ) -> Result<Response, BackendError<KeyserverError>> {
         if let Some(user_id) = self.client.user_id().await {
             todo!()
         } else {
-            anyhow::bail!("cannot get a key before logging in")
+            Err(BackendError::Backend(
+                KeyserverError::AuthenticationRequired,
+            ))
         }
     }
 }
 
 #[async_trait]
 impl ListKeysHandler for Ncog {
-    async fn handle(&self, _permissions: &Permissions) -> Result<Response, anyhow::Error> {
+    async fn handle(
+        &self,
+        _permissions: &Permissions,
+    ) -> Result<Response, BackendError<KeyserverError>> {
         if let Some(user_id) = self.client.user_id().await {
             todo!()
         } else {
-            anyhow::bail!("cannot list keys before logging in")
+            Err(BackendError::Backend(
+                KeyserverError::AuthenticationRequired,
+            ))
         }
     }
 }
@@ -244,7 +279,7 @@ impl ValidatePublicKeyHandler for Ncog {
         &self,
         _permissions: &Permissions,
         public_key: PublicKey,
-    ) -> Result<Response, anyhow::Error> {
+    ) -> Result<Response, BackendError<KeyserverError>> {
         let db = self.database().await?;
         let identity_key = db
             .query_with_docs::<NonRevokedPublicKeys>(
@@ -256,8 +291,7 @@ impl ValidatePublicKeyHandler for Ncog {
             let identity_key = mapped_document.document.contents::<IdentityKey>()?;
             let identity = Identity::get(identity_key.identity_id, &db)
                 .await?
-                // TODO this shouldn't error -- we should clean up this data.
-                .ok_or_else(|| anyhow::anyhow!("key not found"))?;
+                .ok_or(BackendError::Backend(KeyserverError::UnknownKey))?;
             Ok(Response::KeyValidation {
                 key: public_key,
                 handle: identity.contents.handle,
@@ -266,7 +300,7 @@ impl ValidatePublicKeyHandler for Ncog {
                 revoked_at: identity_key.revoked_at,
             })
         } else {
-            anyhow::bail!("key not found")
+            Err(BackendError::Backend(KeyserverError::UnknownKey))
         }
     }
 }
@@ -280,7 +314,7 @@ impl RegisterAccountHandler for Ncog {
         _permissions: &Permissions,
         handle: String,
         password_request: RegistrationRequest,
-    ) -> Result<Response, anyhow::Error> {
+    ) -> Result<Response, BackendError<KeyserverError>> {
         let db = self.database().await?;
 
         // Initiate the password process
@@ -294,7 +328,7 @@ pub async fn register_account<S: ServerConnection, C: Connection>(
     db: &C,
     handle: String,
     password_request: RegistrationRequest,
-) -> Result<RegistrationResponse, anyhow::Error> {
+) -> Result<RegistrationResponse, BackendError<KeyserverError>> {
     // The identity handle space is more limited than the username space, so we need to reserve the identity first.
     let identity = Identity {
         user_id: None,
@@ -321,7 +355,7 @@ impl ChangePasswordHandler for Ncog {
         &self,
         _permissions: &Permissions,
         password_request: RegistrationRequest,
-    ) -> Result<Response, anyhow::Error> {
+    ) -> Result<Response, BackendError<KeyserverError>> {
         todo!()
     }
 }
@@ -333,7 +367,7 @@ impl FinishPasswordRegistrationHandler for Ncog {
         _permissions: &Permissions,
         handle: String,
         password_response: RegistrationFinalization,
-    ) -> Result<Response, anyhow::Error> {
+    ) -> Result<Response, BackendError<KeyserverError>> {
         self.server
             .finish_set_user_password(handle, password_response)
             .await?;

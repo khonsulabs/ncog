@@ -1,4 +1,4 @@
-use std::{borrow::Cow, collections::HashMap};
+use std::{borrow::Cow, collections::HashMap, convert::Infallible};
 
 use bonsaidb::core::{
     admin::password_config::PasswordConfig,
@@ -162,11 +162,13 @@ impl View for NonRevokedPublicKeys {
 pub struct EncodedPublicKey(Vec<u8>);
 
 impl Key for EncodedPublicKey {
-    fn as_big_endian_bytes(&self) -> anyhow::Result<std::borrow::Cow<'_, [u8]>> {
+    type Error = Infallible;
+
+    fn as_big_endian_bytes(&self) -> Result<std::borrow::Cow<'_, [u8]>, Infallible> {
         Ok(Cow::Borrowed(&self.0))
     }
 
-    fn from_big_endian_bytes(bytes: &[u8]) -> anyhow::Result<Self> {
+    fn from_big_endian_bytes(bytes: &[u8]) -> Result<Self, Infallible> {
         Ok(Self(bytes.to_vec()))
     }
 }

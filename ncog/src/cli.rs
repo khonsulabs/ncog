@@ -95,7 +95,7 @@ impl AccountArgs {
                         handle: self.username.clone(),
                         password_request: request,
                     })
-                    .await?
+                    .await??
                 {
                     Response::FinishPasswordRegistation(response) => response,
                     other => unreachable!("unexpected response: {:?}", other),
@@ -111,7 +111,7 @@ impl AccountArgs {
                         handle: self.username.clone(),
                         password_finalization,
                     })
-                    .await?
+                    .await??
                 {
                     Response::Ok => {}
                     other => unreachable!("unexpected response: {:?}", other),
@@ -139,7 +139,7 @@ impl AccountArgs {
                             secret_key.public_encryption_key(),
                         ],
                     })
-                    .await?
+                    .await??
                 {
                     Response::KeyRegistered { id, expires_at, .. } => {
                         println!("Registered key #{}, expires at {}", id, expires_at);
@@ -317,7 +317,7 @@ impl KeyCommand {
                 let ncog = connect_to_server(domain, certificate.as_deref()).await?;
                 match ncog
                     .send_api_request(Request::ValidatePublicKey(public_key))
-                    .await?
+                    .await??
                 {
                     Response::KeyValidation {
                         handle,
@@ -457,8 +457,14 @@ impl ServerArgs {
                 println!("User {} created.", username);
                 Ok(())
             }
-            ServerCommand::Certificate(command) => command.execute(server).await,
-            ServerCommand::Run(command) => command.execute(server).await,
+            ServerCommand::Certificate(command) => {
+                command.execute(server).await?;
+                Ok(())
+            }
+            ServerCommand::Run(command) => {
+                command.execute(server).await?;
+                Ok(())
+            }
         }
     }
 }
