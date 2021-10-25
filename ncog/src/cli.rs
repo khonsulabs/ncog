@@ -9,8 +9,8 @@ use bonsaidb::{
     core::{
         connection::ServerConnection,
         custodian_password::{ClientConfig, ClientRegistration},
+        password_config,
         permissions::bonsai::{BonsaiAction, ServerAction},
-        PASSWORD_CONFIG,
     },
     server::{Configuration, CustomServer, DefaultPermissions},
 };
@@ -18,13 +18,14 @@ use crossterm::{
     event::{Event, KeyCode, KeyModifiers},
     terminal::{disable_raw_mode, enable_raw_mode},
 };
+use englishid::EnglishId;
 use ncog_encryption::{EncryptedPayload, PublicKey, SecretKey, Signature};
 use structopt::StructOpt;
 use time::OffsetDateTime;
 
 use crate::{
     schema::Keyserver,
-    server::{register_account, Ncog, Request, Response},
+    server::{register_account, Ncog, NcogAction, Request, Response, TrustLevel},
 };
 
 #[derive(StructOpt, Debug)]
@@ -55,8 +56,20 @@ pub struct AccountArgs {
 
 #[derive(StructOpt, Debug)]
 pub enum AccountCommand {
-    Register,
+    CreateInvitation,
+    Register { invitation: InviteHandle },
     RegisterKey { secret_key_path: PathBuf },
+}
+
+#[derive(Debug)]
+pub struct InviteHandle(u64);
+
+impl FromStr for InviteHandle {
+    type Err = englishid::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self(englishid::parse_u64(s)?))
+    }
 }
 
 async fn connect_to_server(
@@ -76,31 +89,60 @@ async fn connect_to_server(
 
 impl AccountArgs {
     pub async fn execute(self) -> anyhow::Result<()> {
-        let ncog = connect_to_server(
-            self.domain.as_deref().unwrap_or("ncog.id"),
-            self.certificate.as_deref(),
-        )
-        .await?;
+        let domain = self.domain.as_deref().unwrap_or("ncog.id");
+        let ncog = connect_to_server(domain, self.certificate.as_deref()).await?;
 
         match self.command {
-            AccountCommand::Register => {
+            AccountCommand::CreateInvitation => {
+                println!("Enter your password:");
+                let password = tokio::task::spawn_blocking(read_line).await??;
+                ncog.login_with_password_str(&self.username, &password, None)
+                    .await?;
+
+                match ncog
+                    .send_api_request(Request::CreateInvitation {
+                        handle: self.username.clone(),
+                        trust_level: TrustLevel::None,
+                        expires_at: None,
+                        max_redemptions: None,
+                    })
+                    .await?
+                {
+                    Response::InvitationCreated {
+                        token,
+                        expires_at,
+                        max_redemptions,
+                    } => {
+                        println!(
+                            "Invitation {}/{} created, expires at: {:?}, max redemptions: {:?}",
+                            domain,
+                            EnglishId::from(token).words(4).to_string().unwrap(),
+                            expires_at,
+                            max_redemptions
+                        );
+                        Ok(())
+                    }
+                    other => unreachable!("unexpected response: {:?}", other),
+                }
+            }
+            AccountCommand::Register { invitation } => {
                 let password = read_new_password_async().await?;
 
                 let (registration, request) = ClientRegistration::register(
-                    &ClientConfig::new(PASSWORD_CONFIG, None)?,
+                    ClientConfig::new(password_config(), None)?,
                     password,
                 )?;
                 let registration_response = match ncog
                     .send_api_request(Request::RegisterAccount {
                         handle: self.username.clone(),
                         password_request: request,
+                        invitation: invitation.0,
                     })
                     .await?
                 {
                     Response::FinishPasswordRegistation(response) => response,
                     other => unreachable!("unexpected response: {:?}", other),
                 };
-                println!("Got one response");
 
                 // TODO optionally save the ClientFile to the user's preferences folder
                 let (_file, password_finalization, _export_key) =
@@ -436,6 +478,16 @@ impl ServerArgs {
                         ]),
                     },
                 ])),
+                authenticated_permissions: DefaultPermissions::Permissions(Permissions::from(
+                    vec![Statement {
+                        resources: vec![ResourceName::any()],
+                        actions: ActionNameList::List(vec![
+                            NcogAction::CreateInvitation.name(),
+                            BonsaiAction::Server(ServerAction::Connect).name(),
+                            BonsaiAction::Server(ServerAction::LoginWithPassword).name(),
+                        ]),
+                    }],
+                )),
                 ..Configuration::default()
             },
         )
@@ -445,10 +497,11 @@ impl ServerArgs {
                 let db = server.database::<Keyserver>("keyserver").await?;
                 let password = read_new_password_async().await?;
                 let (registration, request) = ClientRegistration::register(
-                    &ClientConfig::new(PASSWORD_CONFIG, None)?,
+                    ClientConfig::new(password_config(), None)?,
                     password,
                 )?;
-                let response = register_account(&server, &db, username.clone(), request).await?;
+                let response =
+                    register_account(&server, &db, username.clone(), None, request).await?;
                 let (_client_file, finalization, _export_key) = registration.finish(response)?;
 
                 server

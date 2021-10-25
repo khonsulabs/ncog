@@ -1,16 +1,23 @@
 use std::{borrow::Cow, collections::HashMap, convert::Infallible};
 
-use bonsaidb::core::{
-    admin::password_config::PasswordConfig,
-    document::Document,
-    schema::{
-        Collection, CollectionName, InvalidNameError, Key, MapResult, Name, NamedCollection,
-        Schema, SchemaName, Schematic, View,
+use bonsaidb::{
+    core::{
+        admin::password_config::PasswordConfig,
+        connection::{AccessPolicy, Connection, QueryKey},
+        document::Document,
+        schema::{
+            Collection, CollectionDocument, CollectionName, InsertError, InvalidNameError, Key,
+            MapResult, Name, NamedCollection, Schema, SchemaName, Schematic, View,
+        },
     },
+    server::BackendError,
 };
 use ncog_encryption::{Attestation, Error, PublicKey, PublicKeyKind};
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
+
+use crate::server::{KeyserverError, RedemptionLimit, TrustLevel};
 
 #[derive(Debug)]
 pub struct Keyserver;
@@ -25,6 +32,7 @@ impl Schema for Keyserver {
         schema.define_collection::<IdentityKey>()?;
         schema.define_collection::<RegisteredNotarization>()?;
         schema.define_collection::<PasswordConfig>()?;
+        schema.define_collection::<Invitation>()?;
         Ok(())
     }
 }
@@ -34,6 +42,7 @@ pub const NCOG_AUTHORITY: &str = "ncog";
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Identity {
     pub user_id: Option<u64>,
+    pub accepted_invitation_id: Option<u64>,
     pub handle: String,
     pub backup_keys: Vec<BackupKey>,
 }
@@ -43,6 +52,22 @@ pub struct BackupKey {
     pub label: String,
     pub created_at: OffsetDateTime,
     pub public_key: PublicKey,
+}
+
+impl Identity {
+    pub async fn load_for_user_id<DB: Connection>(
+        handle: &str,
+        user_id: u64,
+        db: &DB,
+    ) -> Result<CollectionDocument<Self>, BackendError<KeyserverError>> {
+        let identity = Self::load(handle, db)
+            .await?
+            .ok_or(BackendError::Backend(KeyserverError::UnknownIdentity))?;
+        if identity.contents.user_id != Some(user_id) {
+            return Err(BackendError::Backend(KeyserverError::UnknownIdentity));
+        }
+        Ok(identity)
+    }
 }
 
 impl Collection for Identity {
@@ -209,5 +234,93 @@ impl Collection for RegisteredNotarization {
 
     fn define_views(_schema: &mut Schematic) -> Result<(), bonsaidb::core::Error> {
         Ok(())
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Invitation {
+    pub created_by: u64,
+    pub token: u64,
+    pub trust_level: TrustLevel,
+    pub expires_at: Option<OffsetDateTime>,
+    pub max_redemptions: Option<RedemptionLimit>,
+}
+
+impl Collection for Invitation {
+    fn collection_name() -> Result<CollectionName, InvalidNameError> {
+        CollectionName::new(NCOG_AUTHORITY, "invitations")
+    }
+
+    fn define_views(schema: &mut Schematic) -> Result<(), bonsaidb::core::Error> {
+        schema.define_view(InvitationByToken)?;
+        Ok(())
+    }
+}
+
+impl Invitation {
+    pub async fn generate_random_token<C: Connection>(
+        mut self,
+        db: &C,
+    ) -> Result<CollectionDocument<Self>, bonsaidb::core::Error> {
+        loop {
+            self.token = {
+                let mut rng = rand::thread_rng();
+                rng.gen_range(0..2_u64.pow(52))
+            };
+
+            self = match self.insert_into(db).await {
+                Ok(doc) => return Ok(doc),
+                Err(InsertError {
+                    contents,
+                    error: bonsaidb::core::Error::UniqueKeyViolation { .. },
+                }) => contents,
+                Err(InsertError { error, .. }) => return Err(error),
+            }
+        }
+    }
+
+    pub async fn load_from_token<C: Connection>(
+        token: u64,
+        db: &C,
+    ) -> Result<CollectionDocument<Self>, BackendError<KeyserverError>> {
+        if let Some(mapping) = db
+            .query_with_docs::<InvitationByToken>(
+                Some(QueryKey::Matches(token)),
+                AccessPolicy::UpdateBefore,
+            )
+            .await?
+            .into_iter()
+            .next()
+        {
+            Ok(CollectionDocument::try_from(mapping.document)?)
+        } else {
+            Err(BackendError::Backend(KeyserverError::UnknownInvitation))
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct InvitationByToken;
+
+impl View for InvitationByToken {
+    type Collection = Invitation;
+    type Key = u64;
+    type Value = ();
+
+    fn unique(&self) -> bool {
+        true
+    }
+
+    fn version(&self) -> u64 {
+        0
+    }
+
+    fn name(&self) -> Result<bonsaidb::core::schema::Name, InvalidNameError> {
+        Name::new("by-token")
+    }
+
+    fn map(&self, document: &Document<'_>) -> MapResult<Self::Key, Self::Value> {
+        let invitation = document.contents::<Invitation>()?;
+        Ok(vec![document.emit_key(invitation.token)])
     }
 }

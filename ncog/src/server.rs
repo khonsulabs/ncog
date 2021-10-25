@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use actionable::Actionable;
+use actionable::{Action, Actionable, ResourceName};
 use async_trait::async_trait;
 use bonsaidb::{
     core::{
@@ -8,7 +8,7 @@ use bonsaidb::{
         custodian_password::{RegistrationFinalization, RegistrationRequest, RegistrationResponse},
         custom_api::CustomApi,
         permissions::{Dispatcher, Permissions},
-        schema::{Collection, NamedCollection},
+        schema::Collection,
     },
     server::{Backend, BackendError, ConnectedClient, CustomServer, ServerDatabase},
 };
@@ -17,7 +17,8 @@ use serde::{Deserialize, Serialize};
 use time::{ext::NumericalDuration, OffsetDateTime};
 
 use crate::schema::{
-    EncodedPublicKey, EncryptedKeyMethod, Identity, IdentityKey, Keyserver, NonRevokedPublicKeys,
+    EncodedPublicKey, EncryptedKeyMethod, Identity, IdentityKey, Invitation, Keyserver,
+    NonRevokedPublicKeys,
 };
 
 #[derive(Debug, Dispatcher)]
@@ -68,6 +69,10 @@ pub enum KeyserverError {
     UnknownIdentity,
     #[error("unknown key")]
     UnknownKey,
+    #[error("unknown invitation")]
+    UnknownInvitation,
+    #[error("expired invitation")]
+    ExpiredInvitation,
     #[error("encryption error: {0}")]
     Encryption(String),
 }
@@ -78,12 +83,40 @@ impl From<Error> for KeyserverError {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub enum TrustLevel {
+    Highest,
+    High,
+    Low,
+    None,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub enum RedemptionLimit {
+    Some(u32),
+    Unlimited,
+}
+
+impl Default for RedemptionLimit {
+    fn default() -> Self {
+        Self::Some(1)
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Actionable)]
 #[allow(clippy::large_enum_variant)]
 pub enum Request {
+    #[actionable(protection = "simple")]
+    CreateInvitation {
+        handle: String,
+        trust_level: TrustLevel,
+        expires_at: Option<OffsetDateTime>,
+        max_redemptions: Option<RedemptionLimit>,
+    },
     #[actionable(protection = "none")]
     RegisterAccount {
         handle: String,
+        invitation: u64,
         password_request: RegistrationRequest,
     },
     #[actionable(protection = "none")]
@@ -121,8 +154,13 @@ pub enum Request {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Response {
-    Ok, // TODO this should be able to use bonsaidb's Ok, maybe?
+    Ok,
     FinishPasswordRegistation(RegistrationResponse),
+    InvitationCreated {
+        token: u64,
+        expires_at: Option<OffsetDateTime>,
+        max_redemptions: Option<RedemptionLimit>,
+    },
     KeyRegistered {
         id: u64,
         public_keys: Vec<PublicKey>,
@@ -156,6 +194,57 @@ impl RequestDispatcher for Ncog {
 }
 
 #[async_trait]
+impl CreateInvitationHandler for Ncog {
+    type Action = NcogAction;
+
+    async fn resource_name<'a>(
+        &'a self,
+        _handle: &'a String,
+        _trust_level: &'a TrustLevel,
+        _expires_at: &'a Option<OffsetDateTime>,
+        _max_redemptions: &'a Option<RedemptionLimit>,
+    ) -> Result<ResourceName<'a>, BackendError<KeyserverError>> {
+        Ok(ncog_resource_name())
+    }
+
+    fn action() -> Self::Action {
+        NcogAction::CreateInvitation
+    }
+
+    async fn handle_protected(
+        &self,
+        _permissions: &Permissions,
+        handle: String,
+        trust_level: TrustLevel,
+        expires_at: Option<OffsetDateTime>,
+        max_redemptions: Option<RedemptionLimit>,
+    ) -> Result<Response, BackendError<KeyserverError>> {
+        if let Some(user_id) = self.client.user_id().await {
+            let db = self.database().await?;
+            let identity = Identity::load_for_user_id(&handle, user_id, &db).await?;
+            let invitation = Invitation {
+                token: 0,
+                created_by: identity.header.id,
+                trust_level,
+                expires_at,
+                max_redemptions,
+            }
+            .generate_random_token(&db)
+            .await?;
+            Ok(Response::InvitationCreated {
+                token: invitation.contents.token,
+                expires_at: invitation.contents.expires_at,
+                max_redemptions: invitation.contents.max_redemptions,
+            })
+        } else {
+            Err(BackendError::Backend(
+                KeyserverError::AuthenticationRequired,
+            ))
+        }
+    }
+}
+
+#[async_trait]
 impl RegisterKeyHandler for Ncog {
     async fn handle(
         &self,
@@ -167,12 +256,7 @@ impl RegisterKeyHandler for Ncog {
     ) -> Result<Response, BackendError<KeyserverError>> {
         if let Some(user_id) = self.client.user_id().await {
             let db = self.database().await?;
-            let identity = Identity::load(&handle, &db)
-                .await?
-                .ok_or(BackendError::Backend(KeyserverError::UnknownIdentity))?;
-            if identity.contents.user_id != Some(user_id) {
-                return Err(BackendError::Backend(KeyserverError::UnknownIdentity));
-            }
+            let identity = Identity::load_for_user_id(&handle, user_id, &db).await?;
 
             let registered_at = OffsetDateTime::now_utc();
             let expires_at = expires_at.unwrap_or_else(|| registered_at + 26_i64.weeks());
@@ -313,12 +397,32 @@ impl RegisterAccountHandler for Ncog {
         &self,
         _permissions: &Permissions,
         handle: String,
+        invitation: u64,
         password_request: RegistrationRequest,
     ) -> Result<Response, BackendError<KeyserverError>> {
         let db = self.database().await?;
 
+        let invitation = Invitation::load_from_token(invitation, &db).await?;
+
+        if invitation.contents.max_redemptions.is_some() {
+            todo!()
+        }
+
+        if let Some(expires_at) = invitation.contents.expires_at {
+            if expires_at < OffsetDateTime::now_utc() {
+                return Err(BackendError::Backend(KeyserverError::ExpiredInvitation));
+            }
+        }
+
         // Initiate the password process
-        let login_response = register_account(&self.server, &db, handle, password_request).await?;
+        let login_response = register_account(
+            &self.server,
+            &db,
+            handle,
+            Some(invitation.header.id),
+            password_request,
+        )
+        .await?;
         Ok(Response::FinishPasswordRegistation(login_response))
     }
 }
@@ -327,11 +431,13 @@ pub async fn register_account<S: ServerConnection, C: Connection>(
     server: &S,
     db: &C,
     handle: String,
+    accepted_invitation_id: Option<u64>,
     password_request: RegistrationRequest,
 ) -> Result<RegistrationResponse, BackendError<KeyserverError>> {
     // The identity handle space is more limited than the username space, so we need to reserve the identity first.
     let identity = Identity {
         user_id: None,
+        accepted_invitation_id,
         handle,
         backup_keys: vec![],
     };
@@ -374,4 +480,14 @@ impl FinishPasswordRegistrationHandler for Ncog {
 
         Ok(Response::Ok)
     }
+}
+
+#[must_use]
+pub fn ncog_resource_name<'a>() -> ResourceName<'a> {
+    ResourceName::named("ncog")
+}
+
+#[derive(Action, Serialize, Deserialize, Clone, Copy, Debug)]
+pub enum NcogAction {
+    CreateInvitation,
 }
