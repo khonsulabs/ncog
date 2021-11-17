@@ -9,6 +9,7 @@ acme = ["bonsaidb/server-acme"]
 [dependencies]
 bonsaidb = { git = "https://github.com/khonsulabs/bonsaidb.git", branch = "main", features = [
     "server",
+    "server-websockets",
     "client",
     "cli",
 ] }
