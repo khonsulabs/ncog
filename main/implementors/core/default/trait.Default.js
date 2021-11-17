@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["ncog"] = [{"text":"impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.56.1/core/default/trait.Default.html\" title=\"trait core::default::Default\">Default</a> for <a class=\"enum\" href=\"ncog/server/enum.RedemptionLimit.html\" title=\"enum ncog::server::RedemptionLimit\">RedemptionLimit</a>","synthetic":false,"types":["ncog::server::RedemptionLimit"]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()
