@@ -32,7 +32,7 @@ jobs:
 
       - name: Build 
         run: |
-          cargo build --bin ncog --release
+          cargo build --bin ncog --release --features acme
 
       - uses: actions/upload-artifact@v2
         with:
@@ -49,12 +49,13 @@ jobs:
       - uses: actions/download-artifact@v2
         with:
           name: ncog
+          path: target/release/ncog
       
       - name: Gather artifacts 
         run: |
           mkdir release
-          chmod +x ncog
-          mv ncog release/
+          chmod +x target/release/ncog
+          mv target/release/ncog release/
 
       - name: Configure SSH 
         run: |
