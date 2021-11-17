@@ -454,6 +454,9 @@ impl FromStr for KeyOperation {
 #[derive(StructOpt, Debug)]
 pub struct ServerArgs {
     pub server_data_path: PathBuf,
+
+    #[structopt(short = "d", long)]
+    pub domain: Option<String>,
     #[structopt(subcommand)]
     pub command: ServerCommand,
 }
@@ -464,11 +467,13 @@ pub enum ServerCommand {
     Certificate(bonsaidb::server::cli::certificate::Command),
     Run(bonsaidb::server::cli::serve::Serve<Ncog>),
 }
+
 impl ServerArgs {
     pub async fn execute(self) -> anyhow::Result<()> {
         let server = CustomServer::open(
             &self.server_data_path,
             Configuration {
+                server_name: self.domain.unwrap_or_else(|| String::from("ncog.id")),
                 default_permissions: DefaultPermissions::Permissions(Permissions::from(vec![
                     Statement {
                         resources: vec![ResourceName::any()],

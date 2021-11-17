@@ -284,10 +284,9 @@ impl Invitation {
         db: &C,
     ) -> Result<CollectionDocument<Self>, BackendError<KeyserverError>> {
         if let Some(mapping) = db
-            .query_with_docs::<InvitationByToken>(
-                Some(QueryKey::Matches(token)),
-                AccessPolicy::UpdateBefore,
-            )
+            .view::<InvitationByToken>()
+            .with_key(token)
+            .query_with_docs()
             .await?
             .into_iter()
             .next()

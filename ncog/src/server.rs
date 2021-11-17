@@ -10,7 +10,9 @@ use bonsaidb::{
         permissions::{Dispatcher, Permissions},
         schema::Collection,
     },
-    server::{Backend, BackendError, ConnectedClient, CustomServer, ServerDatabase},
+    server::{
+        Backend, BackendError, ConnectedClient, CustomApiDispatcher, CustomServer, ServerDatabase,
+    },
 };
 use ncog_encryption::{Error, PublicKey};
 use serde::{Deserialize, Serialize};
@@ -29,28 +31,30 @@ pub struct Ncog {
     client: ConnectedClient<Self>,
 }
 
+#[derive(Clone, Debug)]
+pub struct NcogClient {}
+
 #[async_trait]
 impl Backend for Ncog {
     type CustomApi = Self;
-
     type CustomApiDispatcher = Self;
+    type ClientData = NcogClient;
 
-    fn dispatcher_for(
-        server: &CustomServer<Self>,
-        client: &ConnectedClient<Self>,
-    ) -> Self::CustomApiDispatcher {
+    async fn initialize(server: &CustomServer<Self>) {
+        server.register_schema::<Keyserver>().await.unwrap();
+        server
+            .create_database::<Keyserver>("keyserver", true)
+            .await
+            .unwrap();
+    }
+}
+
+impl CustomApiDispatcher<Self> for Ncog {
+    fn new(server: &CustomServer<Self>, client: &ConnectedClient<Self>) -> Self {
         Self {
             server: server.clone(),
             client: client.clone(),
             pending_registration_user_id: None,
-        }
-    }
-
-    async fn initialize(server: &CustomServer<Self>) {
-        server.register_schema::<Keyserver>().await.unwrap();
-        match server.create_database::<Keyserver>("keyserver").await {
-            Ok(_) | Err(bonsaidb::core::Error::DatabaseNameAlreadyTaken(_)) => {}
-            Err(err) => unreachable!("unexpected error creating database: {:?}", err),
         }
     }
 }
@@ -181,9 +185,7 @@ pub enum Response {
 }
 
 impl Ncog {
-    pub async fn database(
-        &self,
-    ) -> Result<ServerDatabase<'_, Self, Keyserver>, bonsaidb::server::Error> {
+    pub async fn database(&self) -> Result<ServerDatabase<Self>, bonsaidb::core::Error> {
         self.server.database::<Keyserver>("keyserver").await
     }
 }
@@ -366,10 +368,9 @@ impl ValidatePublicKeyHandler for Ncog {
     ) -> Result<Response, BackendError<KeyserverError>> {
         let db = self.database().await?;
         let identity_key = db
-            .query_with_docs::<NonRevokedPublicKeys>(
-                Some(QueryKey::Matches(EncodedPublicKey::from(&public_key))),
-                AccessPolicy::UpdateBefore,
-            )
+            .view::<NonRevokedPublicKeys>()
+            .with_key(EncodedPublicKey::from(&public_key))
+            .query_with_docs()
             .await?;
         if let Some(mapped_document) = identity_key.first() {
             let identity_key = mapped_document.document.contents::<IdentityKey>()?;

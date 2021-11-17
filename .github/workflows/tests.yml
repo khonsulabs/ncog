@@ -19,3 +19,54 @@ jobs:
           cargo test --examples --all-features
         env:
           RUST_BACKTRACE: 1
+
+  package:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v2
+      
+      - name: Install Rust
+        uses: hecrj/setup-rust-action@v1
+
+      - name: Build 
+        run: |
+          cargo build --bin ncog --release
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: ncog
+          path: target/release/ncog
+
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 30
+    needs: [package, test]
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/download-artifact@v2
+        with:
+          name: ncog
+      
+      - name: Gather artifacts 
+        run: |
+          mkdir release
+          chmod +x ncog
+          mv ncog release/
+
+      - name: Configure SSH 
+        run: |
+          mkdir ~/.ssh
+          chmod 0700 ~/.ssh
+          echo "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 0600 ~/.ssh/deploy_key
+          ssh-keyscan -H ncog.id >> ~/.ssh/known_hosts
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          
+      - name: Deploy
+        run: |
+          rsync -avz -e "ssh -i ~/.ssh/deploy_key" release/ ncog@ncog.id:release/
+          ssh -i ~/.ssh/deploy_key ncog@ncog.id sudo /bin/systemctl restart ncog.service

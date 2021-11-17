@@ -3,10 +3,13 @@ name = "ncog"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+acme = ["bonsaidb/server-acme"]
+
 [dependencies]
 bonsaidb = { git = "https://github.com/khonsulabs/bonsaidb.git", branch = "main", features = [
-    "server-full",
-    "client-full",
+    "server",
+    "client",
     "cli",
 ] }
 ncog-encryption = { path = "../ncog-encryption" }
@@ -20,7 +23,7 @@ actionable = "0.1.0-dev.5"
 crossterm = "0.22"
 thiserror = "1"
 rand = "0.8"
-englishid = "0.1"
+englishid = "0.3"
 
 [dev-dependencies]
 tempfile = "3"
