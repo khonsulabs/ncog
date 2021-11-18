@@ -1,5 +1,4 @@
 use std::{
-    net::{Ipv6Addr, SocketAddr, SocketAddrV6},
     path::{Path, PathBuf},
     str::FromStr,
 };
@@ -471,6 +470,7 @@ pub enum ServerCommand {
 }
 
 impl ServerArgs {
+    #[cfg_attr(not(debug_assertions), allow(unused_mut))]
     pub async fn execute(self) -> anyhow::Result<()> {
         let server = CustomServer::open(
             &self.server_data_path,
@@ -524,6 +524,8 @@ impl ServerArgs {
             ServerCommand::Run(mut command) => {
                 #[cfg(debug_assertions)]
                 if command.http_port.is_none() {
+                    use std::net::{Ipv6Addr, SocketAddr, SocketAddrV6};
+
                     command.http_port = Some(SocketAddr::V6(SocketAddrV6::new(
                         Ipv6Addr::UNSPECIFIED,
                         8080,

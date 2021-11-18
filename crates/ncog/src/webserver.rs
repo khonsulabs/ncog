@@ -1,10 +1,18 @@
 use async_trait::async_trait;
-use axum::{extract, http::HeaderValue, routing::get, AddExtensionLayer, Router};
+use axum::{
+    error_handling::HandleErrorExt, extract, http::HeaderValue, response::Html, routing::get,
+    AddExtensionLayer, Router,
+};
 use bonsaidb::server::{CustomServer, HttpService, Peer};
-use hyper::{header, server::conn::Http, Body, Request, Response};
-use tower_http::set_header::SetResponseHeaderLayer;
+use hyper::{header, server::conn::Http, Body, Request, Response, StatusCode};
+use tower_http::{services::ServeDir, set_header::SetResponseHeaderLayer};
 
 use crate::server::Ncog;
+
+#[cfg(debug_assertions)]
+const PKG_PATH: &str = "./crates/ncog-webapp/pkg";
+#[cfg(not(debug_assertions))]
+const PKG_PATH: &str = "./pkg";
 
 #[derive(Debug, Clone)]
 pub struct WebServer {
@@ -41,8 +49,19 @@ impl HttpService for WebServer {
 impl WebServer {
     fn webapp(&self, peer: &Peer) -> Router {
         Router::new()
-            .route("/", get(index_handler))
+            .nest(
+                "/pkg",
+                axum::routing::service_method_routing::get(ServeDir::new(PKG_PATH)).handle_error(
+                    |err: std::io::Error| {
+                        (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            format!("unhandled internal error: {}", err),
+                        )
+                    },
+                ),
+            )
             .route("/ws", get(upgrade_websocket))
+            .fallback(axum::routing::get(spa_index))
             // Attach the server and the remote address as extractable data for the /ws route
             .layer(AddExtensionLayer::new(self.server.clone()))
             .layer(AddExtensionLayer::new(peer.clone()))
@@ -84,15 +103,43 @@ async fn redirect_to_https(
     response
 }
 
-#[allow(clippy::unused_async)]
-async fn index_handler() -> String {
-    String::from("Hello World")
-}
-
 async fn upgrade_websocket(
     server: extract::Extension<CustomServer<Ncog>>,
     peer: extract::Extension<Peer>,
     req: Request<Body>,
 ) -> Response<Body> {
     server.upgrade_websocket(peer.address, req).await
+}
+
+#[allow(clippy::unused_async)]
+async fn spa_index(_req: Request<Body>) -> Html<String> {
+    Html::from(String::from(
+        r#"
+        <html>
+            <head>
+                <meta content="text/html;charset=utf-8" http-equiv="Content-Type"/>
+                <title>Ncog is a Counter</title>
+                <style type="text/css">
+                    body { font-family: verdana, arial, monospace; }
+                    main {
+                        width:30px;
+                        height: 100px;
+                        margin:auto;
+                        text-align: center;
+                    }
+                    input, .count{
+                        font-size: 40px;
+                        padding: 30px;
+                    }
+                </style>
+                <script type=module>
+                    import init from '/pkg/ncog_webapp.js';
+                    await init().catch(console.error);
+                </script>
+            </head>
+            <body>
+            </body>
+        </html>
+    "#,
+    ))
 }

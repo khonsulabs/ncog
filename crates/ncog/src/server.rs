@@ -172,11 +172,11 @@ impl StoreEncryptedKeyHandler for Ncog {
     async fn handle(
         &self,
         _permissions: &Permissions,
-        id: u64,
-        method: EncryptedKeyMethod,
-        encrypted_key: Vec<u8>,
+        _id: u64,
+        _method: EncryptedKeyMethod,
+        _encrypted_key: Vec<u8>,
     ) -> Result<Response, BackendError<KeyserverError>> {
-        if let Some(user_id) = self.client.user_id().await {
+        if let Some(_user_id) = self.client.user_id().await {
             todo!()
         } else {
             Err(BackendError::Backend(
@@ -191,9 +191,9 @@ impl RevokeKeyHandler for Ncog {
     async fn handle(
         &self,
         _permissions: &Permissions,
-        id: u64,
+        _id: u64,
     ) -> Result<Response, BackendError<KeyserverError>> {
-        if let Some(user_id) = self.client.user_id().await {
+        if let Some(_user_id) = self.client.user_id().await {
             todo!()
         } else {
             Err(BackendError::Backend(
@@ -208,9 +208,9 @@ impl GetKeyHandler for Ncog {
     async fn handle(
         &self,
         _permissions: &Permissions,
-        key_id: u64,
+        _key_id: u64,
     ) -> Result<Response, BackendError<KeyserverError>> {
-        if let Some(user_id) = self.client.user_id().await {
+        if let Some(_user_id) = self.client.user_id().await {
             todo!()
         } else {
             Err(BackendError::Backend(
@@ -226,7 +226,7 @@ impl ListKeysHandler for Ncog {
         &self,
         _permissions: &Permissions,
     ) -> Result<Response, BackendError<KeyserverError>> {
-        if let Some(user_id) = self.client.user_id().await {
+        if let Some(_user_id) = self.client.user_id().await {
             todo!()
         } else {
             Err(BackendError::Backend(
@@ -338,7 +338,7 @@ impl ChangePasswordHandler for Ncog {
     async fn handle(
         &self,
         _permissions: &Permissions,
-        password_request: RegistrationRequest,
+        _password_request: RegistrationRequest,
     ) -> Result<Response, BackendError<KeyserverError>> {
         todo!()
     }
