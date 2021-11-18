@@ -68,9 +68,8 @@ jobs:
       
       - name: Gather artifacts 
         run: |
-          tar --strip-components 1 -xvf release/release.tar
-          rm release/release.tar
-          ls -al release/
+          ls -al *
+          tar -xvf release/release.tar
 
       - name: Configure SSH 
         run: |
