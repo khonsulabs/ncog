@@ -74,7 +74,7 @@ async fn redirect_to_https(
 ) -> hyper::Response<Body> {
     let path = req.uri().path();
     let mut response = hyper::Response::new(Body::empty());
-    *response.status_mut() = StatusCode::PERMANENT_REDIRECT;
+    *response.status_mut() = hyper::StatusCode::PERMANENT_REDIRECT;
     response.headers_mut().insert(
         "Location",
         HeaderValue::from_str(&format!("https://{}{}", server.primary_domain(), path)).unwrap(),
