@@ -1,0 +1,1 @@
+initSidebarItems({"fn":[["__wasm_bindgen_generated_main_js",""],["main_js",""]]});

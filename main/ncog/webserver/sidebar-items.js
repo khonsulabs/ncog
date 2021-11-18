@@ -1,1 +1,1 @@
-initSidebarItems({"fn":[["index_handler",""],["upgrade_websocket",""]],"struct":[["WebServer",""]]});
+initSidebarItems({"constant":[["PKG_PATH",""]],"fn":[["spa_index",""],["upgrade_websocket",""]],"struct":[["WebServer",""]]});

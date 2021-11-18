@@ -1,1 +1,1 @@
-initSidebarItems({"enum":[["Commands",""]],"fn":[["main",""]],"struct":[["CoverageConfig",""]]});
+initSidebarItems({"enum":[["Commands",""]],"fn":[["build_web_app",""],["execute_wasm_bindgen",""],["main",""]],"struct":[["CoverageConfig",""]]});

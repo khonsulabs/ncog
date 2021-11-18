@@ -1,1 +1,1 @@
-window.ALL_CRATES = ["ncog","ncog_encryption","xtask"];
+window.ALL_CRATES = ["ncog","ncog_encryption","ncog_shared","ncog_webapp","xtask"];
