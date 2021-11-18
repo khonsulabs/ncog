@@ -4,7 +4,7 @@ use actionable::{Action, Actionable, ResourceName};
 use async_trait::async_trait;
 use bonsaidb::{
     core::{
-        connection::{AccessPolicy, Connection, QueryKey, ServerConnection},
+        connection::{Connection, ServerConnection},
         custodian_password::{RegistrationFinalization, RegistrationRequest, RegistrationResponse},
         custom_api::CustomApi,
         permissions::{Dispatcher, Permissions},

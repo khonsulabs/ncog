@@ -22,8 +22,10 @@ use crate::cli::Args;
 mod cli;
 mod schema;
 mod server;
+mod webserver;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    env_logger::init();
     Args::from_args().execute().await
 }

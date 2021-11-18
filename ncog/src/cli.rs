@@ -1,4 +1,5 @@
 use std::{
+    net::{Ipv6Addr, SocketAddr, SocketAddrV6},
     path::{Path, PathBuf},
     str::FromStr,
 };
@@ -26,6 +27,7 @@ use time::OffsetDateTime;
 use crate::{
     schema::Keyserver,
     server::{register_account, Ncog, NcogAction, Request, Response, TrustLevel},
+    webserver::WebServer,
 };
 
 #[derive(StructOpt, Debug)]
@@ -519,8 +521,25 @@ impl ServerArgs {
                 command.execute(server).await?;
                 Ok(())
             }
-            ServerCommand::Run(command) => {
-                command.execute(server).await?;
+            ServerCommand::Run(mut command) => {
+                #[cfg(debug_assertions)]
+                if command.http_port.is_none() {
+                    command.http_port = Some(SocketAddr::V6(SocketAddrV6::new(
+                        Ipv6Addr::UNSPECIFIED,
+                        8080,
+                        0,
+                        0,
+                    )));
+                    command.https_port = Some(SocketAddr::V6(SocketAddrV6::new(
+                        Ipv6Addr::UNSPECIFIED,
+                        8081,
+                        0,
+                        0,
+                    )));
+                }
+                command
+                    .execute_with(server.clone(), WebServer::new(server))
+                    .await?;
                 Ok(())
             }
         }

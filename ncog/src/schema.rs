@@ -3,7 +3,7 @@ use std::{borrow::Cow, collections::HashMap, convert::Infallible};
 use bonsaidb::{
     core::{
         admin::password_config::PasswordConfig,
-        connection::{AccessPolicy, Connection, QueryKey},
+        connection::Connection,
         document::Document,
         schema::{
             Collection, CollectionDocument, CollectionName, InsertError, InvalidNameError, Key,
