@@ -27,6 +27,8 @@
 <span id="27">27</span>
 <span id="28">28</span>
 <span id="29">29</span>
+<span id="30">30</span>
+<span id="31">31</span>
 </pre><pre class="rust"><code><span class="attribute">#![<span class="ident">forbid</span>(<span class="ident">unsafe_code</span>)]</span>
 <span class="attribute">#![<span class="ident">warn</span>(
     <span class="comment">// TODO clippy::cargo,</span>
@@ -51,9 +53,11 @@
 <span class="kw">mod</span> <span class="ident">cli</span>;
 <span class="kw">mod</span> <span class="ident">schema</span>;
 <span class="kw">mod</span> <span class="ident">server</span>;
+<span class="kw">mod</span> <span class="ident">webserver</span>;
 
 <span class="attribute">#[<span class="ident">tokio::main</span>]</span>
 <span class="kw">async</span> <span class="kw">fn</span> <span class="ident">main</span>() <span class="op">-</span><span class="op">&gt;</span> <span class="ident">anyhow::Result</span><span class="op">&lt;</span>()<span class="op">&gt;</span> {
+    <span class="ident">env_logger::init</span>();
     <span class="ident">Args::from_args</span>().<span class="ident">execute</span>().<span class="kw">await</span>
 }
 </code></pre></div>

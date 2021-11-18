@@ -1,1 +1,1 @@
-initSidebarItems({"fn":[["main",""]],"mod":[["cli",""],["schema",""],["server",""]]});
+initSidebarItems({"fn":[["main",""]],"mod":[["cli",""],["schema",""],["server",""],["webserver",""]]});
