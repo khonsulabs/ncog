@@ -30,6 +30,10 @@ jobs:
       - name: Install Rust
         uses: hecrj/setup-rust-action@v1
 
+      - name: Install wasm-bindgen-cli
+        run: |
+          cargo install wasm-bindgen-cli
+
       - name: Build web app
         run: |
           rustup target add wasm32-unknown-unknown
