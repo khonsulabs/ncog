@@ -1,2 +1,9 @@
 [workspace]
-members = ["ncog", "ncog-encryption", "ncog-webapp", "ncog-shared", "xtask"]
+members = [
+    "crates/ncog",
+    "crates/ncog-encryption",
+    "crates/ncog-webapp",
+    "crates/ncog-shared",
+    "xtask",
+]
+
