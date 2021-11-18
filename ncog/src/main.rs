@@ -20,7 +20,6 @@ use structopt::StructOpt;
 use crate::cli::Args;
 
 mod cli;
-mod schema;
 mod server;
 mod webserver;
 

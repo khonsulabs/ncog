@@ -15,6 +15,7 @@ bonsaidb = { git = "https://github.com/khonsulabs/bonsaidb.git", branch = "main"
     "cli",
 ] }
 ncog-encryption = { path = "../ncog-encryption" }
+ncog-shared = { path = "../ncog-shared" }
 time = { version = "0.3", features = ["std", "formatting", "serde"] }
 serde = { version = "1", features = ["derive"] }
 structopt = "0.3"

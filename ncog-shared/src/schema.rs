@@ -17,7 +17,7 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
-use crate::server::{KeyserverError, RedemptionLimit, TrustLevel};
+use crate::{EncryptedKeyMethod, KeyserverError, RedemptionLimit, TrustLevel};
 
 #[derive(Debug)]
 pub struct Keyserver;
@@ -135,18 +135,6 @@ impl Collection for IdentityKey {
         schema.define_view(NonRevokedPublicKeys)?;
         Ok(())
     }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, Hash, Eq, PartialEq)]
-pub enum EncryptedKeyMethod {
-    /// The encrypted key is stored such that the secret key derived through a
-    /// OPAQUE-KE login session can decrypt the key.
-    OpaqueKe,
-    /// The encrypted key is stored encrypted using the PublicKey such that the
-    /// secret backup key can decrypt the encrypted key. This mechanism is
-    /// meant to be used for a physical backup, such as printing a piece of
-    /// paper and storing it in a secure location.
-    BackupKey(PublicKey),
 }
 
 #[derive(Debug)]

@@ -21,12 +21,12 @@ use crossterm::{
 };
 use englishid::EnglishId;
 use ncog_encryption::{EncryptedPayload, PublicKey, SecretKey, Signature};
+use ncog_shared::{schema::Keyserver, NcogApi, Request, Response, TrustLevel};
 use structopt::StructOpt;
 use time::OffsetDateTime;
 
 use crate::{
-    schema::Keyserver,
-    server::{register_account, Ncog, NcogAction, Request, Response, TrustLevel},
+    server::{register_account, Ncog, NcogAction},
     webserver::WebServer,
 };
 
@@ -77,9 +77,9 @@ impl FromStr for InviteHandle {
 async fn connect_to_server(
     domain: &str,
     certificate: Option<&Path>,
-) -> anyhow::Result<Client<Ncog>> {
+) -> anyhow::Result<Client<NcogApi>> {
     let mut client =
-        Client::build(Url::parse(&format!("bonsaidb://{}", domain))?).with_custom_api::<Ncog>();
+        Client::build(Url::parse(&format!("bonsaidb://{}", domain))?).with_custom_api();
 
     if let Some(certificate) = &certificate {
         let certificate = tokio::fs::read(certificate).await?;

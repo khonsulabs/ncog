@@ -1,0 +1,18 @@
+[package]
+name = "ncog-shared"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[features]
+actionable-traits = []
+
+[dependencies]
+bonsaidb = { git = "https://github.com/khonsulabs/bonsaidb.git", branch = "main" }
+thiserror = "1"
+serde = { version = "1", features = ["derive"] }
+actionable = "0.1.0-dev.5"
+time = { version = "0.3", features = ["std", "formatting", "serde"] }
+ncog-encryption = { path = "../ncog-encryption" }
+rand = "0.8"

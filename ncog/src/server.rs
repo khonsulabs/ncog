@@ -1,12 +1,11 @@
 use std::collections::HashMap;
 
-use actionable::{Action, Actionable, ResourceName};
+use actionable::{Action, ResourceName};
 use async_trait::async_trait;
 use bonsaidb::{
     core::{
         connection::{Connection, ServerConnection},
         custodian_password::{RegistrationFinalization, RegistrationRequest, RegistrationResponse},
-        custom_api::CustomApi,
         permissions::{Dispatcher, Permissions},
         schema::Collection,
     },
@@ -14,14 +13,18 @@ use bonsaidb::{
         Backend, BackendError, ConnectedClient, CustomApiDispatcher, CustomServer, ServerDatabase,
     },
 };
-use ncog_encryption::{Error, PublicKey};
+use ncog_encryption::PublicKey;
+use ncog_shared::{
+    schema::{
+        EncodedPublicKey, Identity, IdentityKey, Invitation, Keyserver, NonRevokedPublicKeys,
+    },
+    ChangePasswordHandler, CreateInvitationHandler, EncryptedKeyMethod,
+    FinishPasswordRegistrationHandler, GetKeyHandler, KeyserverError, ListKeysHandler, NcogApi,
+    RedemptionLimit, RegisterAccountHandler, RegisterKeyHandler, Request, RequestDispatcher,
+    Response, RevokeKeyHandler, StoreEncryptedKeyHandler, TrustLevel, ValidatePublicKeyHandler,
+};
 use serde::{Deserialize, Serialize};
 use time::{ext::NumericalDuration, OffsetDateTime};
-
-use crate::schema::{
-    EncodedPublicKey, EncryptedKeyMethod, Identity, IdentityKey, Invitation, Keyserver,
-    NonRevokedPublicKeys,
-};
 
 #[derive(Debug, Dispatcher)]
 #[dispatcher(input = Request)]
@@ -36,7 +39,7 @@ pub struct NcogClient {}
 
 #[async_trait]
 impl Backend for Ncog {
-    type CustomApi = Self;
+    type CustomApi = NcogApi;
     type CustomApiDispatcher = Self;
     type ClientData = NcogClient;
 
@@ -58,132 +61,6 @@ impl CustomApiDispatcher<Self> for Ncog {
         }
     }
 }
-
-impl CustomApi for Ncog {
-    type Request = Request;
-    type Response = Response;
-    type Error = KeyserverError;
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, thiserror::Error)]
-pub enum KeyserverError {
-    #[error("authentication required")]
-    AuthenticationRequired,
-    #[error("unknown identity")]
-    UnknownIdentity,
-    #[error("unknown key")]
-    UnknownKey,
-    #[error("unknown invitation")]
-    UnknownInvitation,
-    #[error("expired invitation")]
-    ExpiredInvitation,
-    #[error("encryption error: {0}")]
-    Encryption(String),
-}
-
-impl From<Error> for KeyserverError {
-    fn from(err: Error) -> Self {
-        Self::Encryption(err.to_string())
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub enum TrustLevel {
-    Highest,
-    High,
-    Low,
-    None,
-}
-
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
-pub enum RedemptionLimit {
-    Some(u32),
-    Unlimited,
-}
-
-impl Default for RedemptionLimit {
-    fn default() -> Self {
-        Self::Some(1)
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Actionable)]
-#[allow(clippy::large_enum_variant)]
-pub enum Request {
-    #[actionable(protection = "simple")]
-    CreateInvitation {
-        handle: String,
-        trust_level: TrustLevel,
-        expires_at: Option<OffsetDateTime>,
-        max_redemptions: Option<RedemptionLimit>,
-    },
-    #[actionable(protection = "none")]
-    RegisterAccount {
-        handle: String,
-        invitation: u64,
-        password_request: RegistrationRequest,
-    },
-    #[actionable(protection = "none")]
-    FinishPasswordRegistration {
-        handle: String,
-        password_finalization: RegistrationFinalization,
-    },
-    #[actionable(protection = "none")]
-    ChangePassword {
-        password_request: RegistrationRequest,
-    },
-    #[actionable(protection = "none")]
-    RegisterKey {
-        handle: String,
-        expires_at: Option<OffsetDateTime>,
-        encrypted_keys: Option<HashMap<EncryptedKeyMethod, Vec<u8>>>,
-        public_keys: Vec<PublicKey>,
-    },
-    #[actionable(protection = "none")]
-    StoreEncryptedKey {
-        id: u64,
-        method: EncryptedKeyMethod,
-        encrypted_key: Vec<u8>,
-    },
-    #[actionable(protection = "none")]
-    RevokeKey { id: u64 },
-    #[actionable(protection = "none")]
-    ListKeys,
-    // ListIdentities,
-    #[actionable(protection = "none")]
-    GetKey(u64),
-    #[actionable(protection = "none")]
-    ValidatePublicKey(PublicKey),
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum Response {
-    Ok,
-    FinishPasswordRegistation(RegistrationResponse),
-    InvitationCreated {
-        token: u64,
-        expires_at: Option<OffsetDateTime>,
-        max_redemptions: Option<RedemptionLimit>,
-    },
-    KeyRegistered {
-        id: u64,
-        public_keys: Vec<PublicKey>,
-        expires_at: OffsetDateTime,
-    },
-    RevokeKey {
-        id: u64,
-    },
-    ListKeys(Vec<IdentityKey>),
-    Key(IdentityKey),
-    KeyValidation {
-        key: PublicKey,
-        handle: String,
-        registered_at: OffsetDateTime,
-        expires_at: OffsetDateTime,
-        revoked_at: Option<OffsetDateTime>,
-    },
-}
-
 impl Ncog {
     pub async fn database(&self) -> Result<ServerDatabase<Self>, bonsaidb::core::Error> {
         self.server.database::<Keyserver>("keyserver").await
