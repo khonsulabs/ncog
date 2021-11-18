@@ -94,6 +94,8 @@
 <span id="94">94</span>
 <span id="95">95</span>
 <span id="96">96</span>
+<span id="97">97</span>
+<span id="98">98</span>
 </pre><pre class="rust"><code><span class="kw">use</span> <span class="ident">async_trait::async_trait</span>;
 <span class="kw">use</span> <span class="ident">axum</span>::{<span class="ident">extract</span>, <span class="ident">http::HeaderValue</span>, <span class="ident">routing::get</span>, <span class="ident">AddExtensionLayer</span>, <span class="ident">Router</span>};
 <span class="kw">use</span> <span class="ident">bonsaidb::server</span>::{<span class="ident">CustomServer</span>, <span class="ident">HttpService</span>, <span class="ident">Peer</span>};
@@ -158,7 +160,9 @@
         <span class="kw">if</span> <span class="ident">peer</span>.<span class="ident">secure</span> {
             <span class="self">self</span>.<span class="ident">webapp</span>(<span class="ident">peer</span>)
         } <span class="kw">else</span> {
-            <span class="ident">Router::new</span>().<span class="ident">nest</span>(<span class="string">&quot;/&quot;</span>, <span class="ident">axum::routing::get</span>(<span class="ident">redirect_to_https</span>))
+            <span class="ident">Router::new</span>()
+                .<span class="ident">nest</span>(<span class="string">&quot;/&quot;</span>, <span class="ident">axum::routing::get</span>(<span class="ident">redirect_to_https</span>))
+                .<span class="ident">layer</span>(<span class="ident">AddExtensionLayer::new</span>(<span class="self">self</span>.<span class="ident">server</span>.<span class="ident">clone</span>()))
         }
     }
 }
