@@ -1,3 +1,0 @@
-(function() {var implementors = {};
-implementors["ncog"] = [{"text":"impl TcpService for <a class=\"struct\" href=\"ncog/webserver/struct.WebServer.html\" title=\"struct ncog::webserver::WebServer\">WebServer</a>","synthetic":false,"types":["ncog::webserver::WebServer"]}];
-if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()
