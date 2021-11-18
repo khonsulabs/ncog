@@ -52,7 +52,7 @@ jobs:
 
       - uses: actions/upload-artifact@v2
         with:
-          name: release.tar
+          name: release
           path: release.tar
 
   deploy:
@@ -64,12 +64,12 @@ jobs:
       - uses: actions/checkout@v2
       - uses: actions/download-artifact@v2
         with:
-          name: release.tar
-          path: release.tar
+          name: release
       
       - name: Gather artifacts 
         run: |
-          tar -xvf release.tar
+          tar --strip-components 1 -xvf release/release.tar
+          rm release/release.tar
           ls -al release/
 
       - name: Configure SSH 
