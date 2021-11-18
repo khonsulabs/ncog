@@ -879,7 +879,7 @@
                 
             </div>
             <div class="column has-background-white p-0">
-                <pre class="has-background-white py-0 px-2">            Router::new().nest(&quot;&#x2F;&quot;, axum::routing::get(redirect_to_https))</pre>
+                <pre class="has-background-white py-0 px-2">            Router::new()</pre>
             </div>
         </div><div class="columns p-0 m-0">
             <div
@@ -892,7 +892,7 @@
                 
             </div>
             <div class="column has-background-white p-0">
-                <pre class="has-background-white py-0 px-2">        }</pre>
+                <pre class="has-background-white py-0 px-2">                .nest(&quot;&#x2F;&quot;, axum::routing::get(redirect_to_https))</pre>
             </div>
         </div><div class="columns p-0 m-0">
             <div
@@ -905,7 +905,7 @@
                 
             </div>
             <div class="column has-background-white p-0">
-                <pre class="has-background-white py-0 px-2">    }</pre>
+                <pre class="has-background-white py-0 px-2">                .layer(AddExtensionLayer::new(self.server.clone()))</pre>
             </div>
         </div><div class="columns p-0 m-0">
             <div
@@ -918,7 +918,7 @@
                 
             </div>
             <div class="column has-background-white p-0">
-                <pre class="has-background-white py-0 px-2">}</pre>
+                <pre class="has-background-white py-0 px-2">        }</pre>
             </div>
         </div><div class="columns p-0 m-0">
             <div
@@ -931,7 +931,7 @@
                 
             </div>
             <div class="column has-background-white p-0">
-                <pre class="has-background-white py-0 px-2"></pre>
+                <pre class="has-background-white py-0 px-2">    }</pre>
             </div>
         </div><div class="columns p-0 m-0">
             <div
@@ -944,7 +944,7 @@
                 
             </div>
             <div class="column has-background-white p-0">
-                <pre class="has-background-white py-0 px-2">#[cfg(not(debug_assertions))]</pre>
+                <pre class="has-background-white py-0 px-2">}</pre>
             </div>
         </div><div class="columns p-0 m-0">
             <div
@@ -957,7 +957,7 @@
                 
             </div>
             <div class="column has-background-white p-0">
-                <pre class="has-background-white py-0 px-2">async fn redirect_to_https(</pre>
+                <pre class="has-background-white py-0 px-2"></pre>
             </div>
         </div><div class="columns p-0 m-0">
             <div
@@ -970,7 +970,7 @@
                 
             </div>
             <div class="column has-background-white p-0">
-                <pre class="has-background-white py-0 px-2">    server: extract::Extension&lt;CustomServer&lt;Ncog&gt;&gt;,</pre>
+                <pre class="has-background-white py-0 px-2">#[cfg(not(debug_assertions))]</pre>
             </div>
         </div><div class="columns p-0 m-0">
             <div
@@ -983,7 +983,7 @@
                 
             </div>
             <div class="column has-background-white p-0">
-                <pre class="has-background-white py-0 px-2">    req: hyper::Request&lt;Body&gt;,</pre>
+                <pre class="has-background-white py-0 px-2">async fn redirect_to_https(</pre>
             </div>
         </div><div class="columns p-0 m-0">
             <div
@@ -996,7 +996,7 @@
                 
             </div>
             <div class="column has-background-white p-0">
-                <pre class="has-background-white py-0 px-2">) -&gt; hyper::Response&lt;Body&gt; {</pre>
+                <pre class="has-background-white py-0 px-2">    server: extract::Extension&lt;CustomServer&lt;Ncog&gt;&gt;,</pre>
             </div>
         </div><div class="columns p-0 m-0">
             <div
@@ -1009,7 +1009,7 @@
                 
             </div>
             <div class="column has-background-white p-0">
-                <pre class="has-background-white py-0 px-2">    let path = req.uri().path();</pre>
+                <pre class="has-background-white py-0 px-2">    req: hyper::Request&lt;Body&gt;,</pre>
             </div>
         </div><div class="columns p-0 m-0">
             <div
@@ -1022,7 +1022,7 @@
                 
             </div>
             <div class="column has-background-white p-0">
-                <pre class="has-background-white py-0 px-2">    let mut response = hyper::Response::new(Body::empty());</pre>
+                <pre class="has-background-white py-0 px-2">) -&gt; hyper::Response&lt;Body&gt; {</pre>
             </div>
         </div><div class="columns p-0 m-0">
             <div
@@ -1035,7 +1035,7 @@
                 
             </div>
             <div class="column has-background-white p-0">
-                <pre class="has-background-white py-0 px-2">    *response.status_mut() = hyper::StatusCode::PERMANENT_REDIRECT;</pre>
+                <pre class="has-background-white py-0 px-2">    let path = req.uri().path();</pre>
             </div>
         </div><div class="columns p-0 m-0">
             <div
@@ -1048,7 +1048,7 @@
                 
             </div>
             <div class="column has-background-white p-0">
-                <pre class="has-background-white py-0 px-2">    response.headers_mut().insert(</pre>
+                <pre class="has-background-white py-0 px-2">    let mut response = hyper::Response::new(Body::empty());</pre>
             </div>
         </div><div class="columns p-0 m-0">
             <div
@@ -1061,7 +1061,7 @@
                 
             </div>
             <div class="column has-background-white p-0">
-                <pre class="has-background-white py-0 px-2">        &quot;Location&quot;,</pre>
+                <pre class="has-background-white py-0 px-2">    *response.status_mut() = hyper::StatusCode::PERMANENT_REDIRECT;</pre>
             </div>
         </div><div class="columns p-0 m-0">
             <div
@@ -1074,7 +1074,7 @@
                 
             </div>
             <div class="column has-background-white p-0">
-                <pre class="has-background-white py-0 px-2">        HeaderValue::from_str(&amp;format!(&quot;https:&#x2F;&#x2F;{}{}&quot;, server.primary_domain(), path)).unwrap(),</pre>
+                <pre class="has-background-white py-0 px-2">    response.headers_mut().insert(</pre>
             </div>
         </div><div class="columns p-0 m-0">
             <div
@@ -1087,7 +1087,7 @@
                 
             </div>
             <div class="column has-background-white p-0">
-                <pre class="has-background-white py-0 px-2">    );</pre>
+                <pre class="has-background-white py-0 px-2">        &quot;Location&quot;,</pre>
             </div>
         </div><div class="columns p-0 m-0">
             <div
@@ -1100,7 +1100,7 @@
                 
             </div>
             <div class="column has-background-white p-0">
-                <pre class="has-background-white py-0 px-2">    response</pre>
+                <pre class="has-background-white py-0 px-2">        HeaderValue::from_str(&amp;format!(&quot;https:&#x2F;&#x2F;{}{}&quot;, server.primary_domain(), path)).unwrap(),</pre>
             </div>
         </div><div class="columns p-0 m-0">
             <div
@@ -1113,7 +1113,7 @@
                 
             </div>
             <div class="column has-background-white p-0">
-                <pre class="has-background-white py-0 px-2">}</pre>
+                <pre class="has-background-white py-0 px-2">    );</pre>
             </div>
         </div><div class="columns p-0 m-0">
             <div
@@ -1126,7 +1126,7 @@
                 
             </div>
             <div class="column has-background-white p-0">
-                <pre class="has-background-white py-0 px-2"></pre>
+                <pre class="has-background-white py-0 px-2">    response</pre>
             </div>
         </div><div class="columns p-0 m-0">
             <div
@@ -1139,7 +1139,7 @@
                 
             </div>
             <div class="column has-background-white p-0">
-                <pre class="has-background-white py-0 px-2">#[allow(clippy::unused_async)]</pre>
+                <pre class="has-background-white py-0 px-2">}</pre>
             </div>
         </div><div class="columns p-0 m-0">
             <div
@@ -1148,11 +1148,11 @@
                 <a href="#86">86</a>
             </div>
             <div
-                class="column is-1 is-narrow p-0 has-text-centered has-text-danger-light has-background-danger">
+                class="column is-1 is-narrow p-0 has-text-centered has-text-white has-background-white">
                 
             </div>
-            <div class="column has-background-danger-light p-0">
-                <pre class="has-background-danger-light py-0 px-2">async fn index_handler() -&gt; String {</pre>
+            <div class="column has-background-white p-0">
+                <pre class="has-background-white py-0 px-2"></pre>
             </div>
         </div><div class="columns p-0 m-0">
             <div
@@ -1161,11 +1161,11 @@
                 <a href="#87">87</a>
             </div>
             <div
-                class="column is-1 is-narrow p-0 has-text-centered has-text-danger-light has-background-danger">
+                class="column is-1 is-narrow p-0 has-text-centered has-text-white has-background-white">
                 
             </div>
-            <div class="column has-background-danger-light p-0">
-                <pre class="has-background-danger-light py-0 px-2">    String::from(&quot;Hello World&quot;)</pre>
+            <div class="column has-background-white p-0">
+                <pre class="has-background-white py-0 px-2">#[allow(clippy::unused_async)]</pre>
             </div>
         </div><div class="columns p-0 m-0">
             <div
@@ -1178,7 +1178,7 @@
                 
             </div>
             <div class="column has-background-danger-light p-0">
-                <pre class="has-background-danger-light py-0 px-2">}</pre>
+                <pre class="has-background-danger-light py-0 px-2">async fn index_handler() -&gt; String {</pre>
             </div>
         </div><div class="columns p-0 m-0">
             <div
@@ -1187,11 +1187,11 @@
                 <a href="#89">89</a>
             </div>
             <div
-                class="column is-1 is-narrow p-0 has-text-centered has-text-white has-background-white">
+                class="column is-1 is-narrow p-0 has-text-centered has-text-danger-light has-background-danger">
                 
             </div>
-            <div class="column has-background-white p-0">
-                <pre class="has-background-white py-0 px-2"></pre>
+            <div class="column has-background-danger-light p-0">
+                <pre class="has-background-danger-light py-0 px-2">    String::from(&quot;Hello World&quot;)</pre>
             </div>
         </div><div class="columns p-0 m-0">
             <div
@@ -1204,7 +1204,7 @@
                 
             </div>
             <div class="column has-background-danger-light p-0">
-                <pre class="has-background-danger-light py-0 px-2">async fn upgrade_websocket(</pre>
+                <pre class="has-background-danger-light py-0 px-2">}</pre>
             </div>
         </div><div class="columns p-0 m-0">
             <div
@@ -1213,11 +1213,11 @@
                 <a href="#91">91</a>
             </div>
             <div
-                class="column is-1 is-narrow p-0 has-text-centered has-text-danger-light has-background-danger">
+                class="column is-1 is-narrow p-0 has-text-centered has-text-white has-background-white">
                 
             </div>
-            <div class="column has-background-danger-light p-0">
-                <pre class="has-background-danger-light py-0 px-2">    server: extract::Extension&lt;CustomServer&lt;Ncog&gt;&gt;,</pre>
+            <div class="column has-background-white p-0">
+                <pre class="has-background-white py-0 px-2"></pre>
             </div>
         </div><div class="columns p-0 m-0">
             <div
@@ -1230,7 +1230,7 @@
                 
             </div>
             <div class="column has-background-danger-light p-0">
-                <pre class="has-background-danger-light py-0 px-2">    peer: extract::Extension&lt;Peer&gt;,</pre>
+                <pre class="has-background-danger-light py-0 px-2">async fn upgrade_websocket(</pre>
             </div>
         </div><div class="columns p-0 m-0">
             <div
@@ -1243,7 +1243,7 @@
                 
             </div>
             <div class="column has-background-danger-light p-0">
-                <pre class="has-background-danger-light py-0 px-2">    req: Request&lt;Body&gt;,</pre>
+                <pre class="has-background-danger-light py-0 px-2">    server: extract::Extension&lt;CustomServer&lt;Ncog&gt;&gt;,</pre>
             </div>
         </div><div class="columns p-0 m-0">
             <div
@@ -1256,7 +1256,7 @@
                 
             </div>
             <div class="column has-background-danger-light p-0">
-                <pre class="has-background-danger-light py-0 px-2">) -&gt; Response&lt;Body&gt; {</pre>
+                <pre class="has-background-danger-light py-0 px-2">    peer: extract::Extension&lt;Peer&gt;,</pre>
             </div>
         </div><div class="columns p-0 m-0">
             <div
@@ -1269,7 +1269,7 @@
                 
             </div>
             <div class="column has-background-danger-light p-0">
-                <pre class="has-background-danger-light py-0 px-2">    server.upgrade_websocket(peer.address, req).await</pre>
+                <pre class="has-background-danger-light py-0 px-2">    req: Request&lt;Body&gt;,</pre>
             </div>
         </div><div class="columns p-0 m-0">
             <div
@@ -1282,12 +1282,38 @@
                 
             </div>
             <div class="column has-background-danger-light p-0">
+                <pre class="has-background-danger-light py-0 px-2">) -&gt; Response&lt;Body&gt; {</pre>
+            </div>
+        </div><div class="columns p-0 m-0">
+            <div
+                class="column is-1 is-narrow p-0 has-text-centered"
+                id="97">
+                <a href="#97">97</a>
+            </div>
+            <div
+                class="column is-1 is-narrow p-0 has-text-centered has-text-danger-light has-background-danger">
+                
+            </div>
+            <div class="column has-background-danger-light p-0">
+                <pre class="has-background-danger-light py-0 px-2">    server.upgrade_websocket(peer.address, req).await</pre>
+            </div>
+        </div><div class="columns p-0 m-0">
+            <div
+                class="column is-1 is-narrow p-0 has-text-centered"
+                id="98">
+                <a href="#98">98</a>
+            </div>
+            <div
+                class="column is-1 is-narrow p-0 has-text-centered has-text-danger-light has-background-danger">
+                
+            </div>
+            <div class="column has-background-danger-light p-0">
                 <pre class="has-background-danger-light py-0 px-2">}</pre>
             </div>
         </div></div>
         <footer class="footer">
             <div class="content has-text-centered">
-                <p class="heading">Date: 2021-11-18 18:03</p>
+                <p class="heading">Date: 2021-11-18 19:07</p>
             </div>
         </footer>
     </body>
