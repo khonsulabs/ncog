@@ -68,8 +68,7 @@ jobs:
       
       - name: Gather artifacts 
         run: |
-          ls -al *
-          tar -xvf release/release.tar
+          tar -xvf release.tar
 
       - name: Configure SSH 
         run: |
