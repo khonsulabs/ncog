@@ -97,7 +97,7 @@ impl Signature {
                 .contents
                 .try_into()
                 .map_err(|_| Error::Message(String::from("signature length is incorrect")))?;
-            let signature = ed25519_dalek::Signature::new(signature);
+            let signature = ed25519_dalek::Signature::from_bytes(&signature)?;
             Ok(Self::Ed25519(signature))
         } else {
             Err(Error::IncorrectKeyType)

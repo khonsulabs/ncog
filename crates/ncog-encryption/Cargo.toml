@@ -10,6 +10,7 @@ curve25519-dalek = "1"
 hpke = { version = "0.7", default-features = false, features = [
     "x25519",
     "std",
+    "serde_impls",
 ] }
 chrono = "0.4"
 thiserror = "1"

@@ -7,7 +7,7 @@ use actionable::{Action, ActionNameList, Permissions, ResourceName, Statement};
 use bonsaidb::{
     client::{fabruic::Certificate, url::Url, Client},
     core::{
-        connection::ServerConnection,
+        connection::StorageConnection,
         custodian_password::{ClientConfig, ClientRegistration},
         password_config,
         permissions::bonsai::{BonsaiAction, ServerAction},

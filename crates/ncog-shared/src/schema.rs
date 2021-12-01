@@ -177,6 +177,10 @@ pub struct EncodedPublicKey(Vec<u8>);
 impl Key for EncodedPublicKey {
     type Error = Infallible;
 
+    // While we currently only have one key size, we may eventually support
+    // multiple key types of varying lengths.
+    const LENGTH: Option<usize> = None;
+
     fn as_big_endian_bytes(&self) -> Result<std::borrow::Cow<'_, [u8]>, Infallible> {
         Ok(Cow::Borrowed(&self.0))
     }

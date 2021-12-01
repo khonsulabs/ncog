@@ -4,7 +4,7 @@ use actionable::{Action, ResourceName};
 use async_trait::async_trait;
 use bonsaidb::{
     core::{
-        connection::{Connection, ServerConnection},
+        connection::{Connection, StorageConnection},
         custodian_password::{RegistrationFinalization, RegistrationRequest, RegistrationResponse},
         permissions::{Dispatcher, Permissions},
         schema::Collection,
@@ -305,7 +305,7 @@ impl RegisterAccountHandler for Ncog {
     }
 }
 
-pub async fn register_account<S: ServerConnection, C: Connection>(
+pub async fn register_account<S: StorageConnection, C: Connection>(
     server: &S,
     db: &C,
     handle: String,
