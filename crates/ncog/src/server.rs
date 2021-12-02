@@ -15,9 +15,7 @@ use bonsaidb::{
 };
 use ncog_encryption::PublicKey;
 use ncog_shared::{
-    schema::{
-        EncodedPublicKey, Identity, IdentityKey, Invitation, Keyserver, NonRevokedPublicKeys,
-    },
+    schema::{Identity, IdentityKey, Invitation, Keyserver, NonRevokedPublicKeys},
     ChangePasswordHandler, CreateInvitationHandler, EncryptedKeyMethod,
     FinishPasswordRegistrationHandler, GetKeyHandler, KeyserverError, ListKeysHandler, NcogApi,
     RedemptionLimit, RegisterAccountHandler, RegisterKeyHandler, Request, RequestDispatcher,
@@ -246,7 +244,7 @@ impl ValidatePublicKeyHandler for Ncog {
         let db = self.database().await?;
         let identity_key = db
             .view::<NonRevokedPublicKeys>()
-            .with_key(EncodedPublicKey::from(&public_key))
+            .with_key((public_key.kind(), public_key.to_bytes()))
             .query_with_docs()
             .await?;
         if let Some(mapped_document) = identity_key.first() {

@@ -518,7 +518,20 @@ impl ServerArgs {
                 Ok(())
             }
             ServerCommand::Certificate(command) => {
-                command.execute(server).await?;
+                let is_installing_self_signed = matches!(
+                    command,
+                    bonsaidb::server::cli::certificate::Command::InstallSelfSigned { .. }
+                );
+                command.execute(server.clone()).await?;
+                if is_installing_self_signed {
+                    if let Ok(chain) = server.certificate_chain().await {
+                        tokio::fs::write(
+                            server.path().join("public-certificate.pot"),
+                            &chain.end_entity_certificate(),
+                        )
+                        .await?;
+                    }
+                }
                 Ok(())
             }
             ServerCommand::Run(mut command) => {

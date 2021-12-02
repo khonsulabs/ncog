@@ -142,7 +142,7 @@ pub struct NonRevokedPublicKeys;
 
 impl View for NonRevokedPublicKeys {
     type Collection = IdentityKey;
-    type Key = EncodedPublicKey;
+    type Key = (PublicKeyKind, Vec<u8>);
     type Value = ();
 
     fn unique(&self) -> bool {
@@ -150,7 +150,7 @@ impl View for NonRevokedPublicKeys {
     }
 
     fn version(&self) -> u64 {
-        0
+        1
     }
 
     fn name(&self) -> Result<bonsaidb::core::schema::Name, InvalidNameError> {
@@ -165,7 +165,7 @@ impl View for NonRevokedPublicKeys {
             Ok(key
                 .public_keys
                 .iter()
-                .map(|(kind, key)| document.emit_key(EncodedPublicKey::new(*kind, key)))
+                .map(|(kind, key)| document.emit_key((*kind, key.to_bytes())))
                 .collect())
         }
     }

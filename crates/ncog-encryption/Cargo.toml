@@ -20,3 +20,6 @@ sha2 = "0.9"
 serde = { version = "1", features = ["derive"] }
 pem = "1"
 yasna = "0.4"
+num-derive = "0.3"
+num-traits = "0.2"
+bonsaidb = { git = "https://github.com/khonsulabs/bonsaidb.git", branch = "main" }

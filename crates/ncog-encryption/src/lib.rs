@@ -3,7 +3,6 @@
     // TODO clippy::cargo,
     // TODO missing_docs,
     // clippy::missing_docs_in_private_items,
-    clippy::nursery,
     clippy::pedantic,
     future_incompatible,
     rust_2018_idioms,
@@ -23,6 +22,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use bonsaidb::core::schema::view::EnumKey;
 use chrono::{DateTime, Utc};
 use curve25519_dalek::edwards::CompressedEdwardsY;
 use ed25519_dalek::{Signer, Verifier};
@@ -34,6 +34,7 @@ use hpke::{
     kex::{KeyExchange, X25519},
     Deserializable, EncappedKey, HpkeError, OpModeR, OpModeS, Serializable,
 };
+use num_derive::{FromPrimitive, ToPrimitive};
 use pem::{Pem, PemError};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
@@ -112,11 +113,15 @@ pub enum PublicKey {
     X25519(<hpke::kex::X25519 as KeyExchange>::PublicKey),
 }
 
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Clone, Copy, Debug, Hash, PartialEq, Eq, Serialize, Deserialize, FromPrimitive, ToPrimitive,
+)]
 pub enum PublicKeyKind {
     Ed25519 = 1,
     X25519 = 2,
 }
+
+impl EnumKey for PublicKeyKind {}
 
 #[derive(thiserror::Error, Debug)]
 #[error("unsupported public key kind")]
