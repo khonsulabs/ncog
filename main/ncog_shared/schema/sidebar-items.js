@@ -1,1 +1,1 @@
-initSidebarItems({"constant":[["NCOG_AUTHORITY",""]],"struct":[["BackupKey",""],["EncodedPublicKey",""],["Identity",""],["IdentityByHandle",""],["IdentityKey",""],["Invitation",""],["InvitationByToken",""],["Keyserver",""],["NonRevokedPublicKeys",""],["RegisteredNotarization",""]]});
+initSidebarItems({"constant":[["NCOG_AUTHORITY",""]],"struct":[["BackupKey",""],["Identity",""],["IdentityByHandle",""],["IdentityKey",""],["Invitation",""],["InvitationByToken",""],["Keyserver",""],["NonRevokedPublicKeys",""],["RegisteredNotarization",""]]});
