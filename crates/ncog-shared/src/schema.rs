@@ -1,4 +1,4 @@
-use std::{borrow::Cow, collections::HashMap, convert::Infallible};
+use std::collections::HashMap;
 
 use bonsaidb::{
     core::{
@@ -6,13 +6,13 @@ use bonsaidb::{
         connection::Connection,
         document::Document,
         schema::{
-            Collection, CollectionDocument, CollectionName, InsertError, InvalidNameError, Key,
+            Collection, CollectionDocument, CollectionName, InsertError, InvalidNameError,
             MapResult, Name, NamedCollection, Schema, SchemaName, Schematic, View,
         },
     },
     server::BackendError,
 };
-use ncog_encryption::{Attestation, Error, PublicKey, PublicKeyKind};
+use ncog_encryption::{Attestation, PublicKey, PublicKeyKind};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
@@ -168,47 +168,6 @@ impl View for NonRevokedPublicKeys {
                 .map(|(kind, key)| document.emit_key((*kind, key.to_bytes())))
                 .collect())
         }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct EncodedPublicKey(Vec<u8>);
-
-impl Key for EncodedPublicKey {
-    type Error = Infallible;
-
-    // While we currently only have one key size, we may eventually support
-    // multiple key types of varying lengths.
-    const LENGTH: Option<usize> = None;
-
-    fn as_big_endian_bytes(&self) -> Result<std::borrow::Cow<'_, [u8]>, Infallible> {
-        Ok(Cow::Borrowed(&self.0))
-    }
-
-    fn from_big_endian_bytes(bytes: &[u8]) -> Result<Self, Infallible> {
-        Ok(Self(bytes.to_vec()))
-    }
-}
-
-impl EncodedPublicKey {
-    pub fn new(kind: PublicKeyKind, key: &PublicKey) -> Self {
-        let mut view_key = key.to_bytes();
-        view_key.splice(0..0, (kind as u8).to_be_bytes());
-        Self(view_key)
-    }
-}
-
-impl<'a> From<&'a PublicKey> for EncodedPublicKey {
-    fn from(public_key: &'a PublicKey) -> Self {
-        Self::new(public_key.kind(), public_key)
-    }
-}
-
-impl TryFrom<EncodedPublicKey> for PublicKey {
-    type Error = Error;
-    fn try_from(encoded: EncodedPublicKey) -> Result<Self, Error> {
-        let kind = PublicKeyKind::try_from(i64::from(encoded.0[0]))?;
-        Self::from_kind_and_bytes(&kind, &encoded.0[1..])
     }
 }
 

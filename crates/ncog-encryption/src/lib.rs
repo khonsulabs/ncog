@@ -35,6 +35,7 @@ use hpke::{
     Deserializable, EncappedKey, HpkeError, OpModeR, OpModeS, Serializable,
 };
 use num_derive::{FromPrimitive, ToPrimitive};
+use num_traits::FromPrimitive;
 use pem::{Pem, PemError};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
@@ -127,15 +128,11 @@ impl EnumKey for PublicKeyKind {}
 #[error("unsupported public key kind")]
 pub struct UnsupportedPublicKeyKind;
 
-impl TryFrom<i64> for PublicKeyKind {
+impl TryFrom<u64> for PublicKeyKind {
     type Error = UnsupportedPublicKeyKind;
 
-    fn try_from(value: i64) -> Result<Self, Self::Error> {
-        match value {
-            1 => Ok(Self::Ed25519),
-            2 => Ok(Self::X25519),
-            _ => Err(UnsupportedPublicKeyKind),
-        }
+    fn try_from(value: u64) -> Result<Self, Self::Error> {
+        Self::from_u64(value).ok_or(UnsupportedPublicKeyKind)
     }
 }
 
@@ -494,7 +491,7 @@ impl EncryptedPayload {
                 let additional_data = reader.next().read_bytes()?;
                 let ciphertext = reader.next().read_bytes()?;
                 let sender_key_kind = reader.next().read_enum()?;
-                let sender = if sender_key_kind >= 0 {
+                let sender = if let Ok(sender_key_kind) = u64::try_from(sender_key_kind) {
                     let sender_key_kind =
                         PublicKeyKind::try_from(sender_key_kind).map_err(|err| {
                             our_error = Some(Error::from(err));
