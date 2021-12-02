@@ -743,6 +743,19 @@
 <span id="743">743</span>
 <span id="744">744</span>
 <span id="745">745</span>
+<span id="746">746</span>
+<span id="747">747</span>
+<span id="748">748</span>
+<span id="749">749</span>
+<span id="750">750</span>
+<span id="751">751</span>
+<span id="752">752</span>
+<span id="753">753</span>
+<span id="754">754</span>
+<span id="755">755</span>
+<span id="756">756</span>
+<span id="757">757</span>
+<span id="758">758</span>
 </pre><pre class="rust"><code><span class="kw">use</span> <span class="ident">std</span>::{
     <span class="ident">path</span>::{<span class="ident">Path</span>, <span class="ident">PathBuf</span>},
     <span class="ident">str::FromStr</span>,
@@ -1263,7 +1276,20 @@
                 <span class="prelude-val">Ok</span>(())
             }
             <span class="ident">ServerCommand::Certificate</span>(<span class="ident">command</span>) <span class="op">=</span><span class="op">&gt;</span> {
-                <span class="ident">command</span>.<span class="ident">execute</span>(<span class="ident">server</span>).<span class="kw">await</span><span class="question-mark">?</span>;
+                <span class="kw">let</span> <span class="ident">is_installing_self_signed</span> <span class="op">=</span> <span class="macro">matches!</span>(
+                    <span class="ident">command</span>,
+                    <span class="ident">bonsaidb::server::cli::certificate::Command::InstallSelfSigned</span> { .. }
+                );
+                <span class="ident">command</span>.<span class="ident">execute</span>(<span class="ident">server</span>.<span class="ident">clone</span>()).<span class="kw">await</span><span class="question-mark">?</span>;
+                <span class="kw">if</span> <span class="ident">is_installing_self_signed</span> {
+                    <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Ok</span>(<span class="ident">chain</span>) <span class="op">=</span> <span class="ident">server</span>.<span class="ident">certificate_chain</span>().<span class="kw">await</span> {
+                        <span class="ident">tokio::fs::write</span>(
+                            <span class="ident">server</span>.<span class="ident">path</span>().<span class="ident">join</span>(<span class="string">&quot;public-certificate.pot&quot;</span>),
+                            <span class="kw-2">&amp;</span><span class="ident">chain</span>.<span class="ident">end_entity_certificate</span>(),
+                        )
+                        .<span class="kw">await</span><span class="question-mark">?</span>;
+                    }
+                }
                 <span class="prelude-val">Ok</span>(())
             }
             <span class="ident">ServerCommand::Run</span>(<span class="kw-2">mut</span> <span class="ident">command</span>) <span class="op">=</span><span class="op">&gt;</span> {

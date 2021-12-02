@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["ncog_encryption"] = [{"text":"impl <a class=\"trait\" href=\"https://docs.rs/num-traits/0.2/num_traits/cast/trait.FromPrimitive.html\" title=\"trait num_traits::cast::FromPrimitive\">FromPrimitive</a> for <a class=\"enum\" href=\"ncog_encryption/enum.PublicKeyKind.html\" title=\"enum ncog_encryption::PublicKeyKind\">PublicKeyKind</a>","synthetic":false,"types":["ncog_encryption::PublicKeyKind"]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

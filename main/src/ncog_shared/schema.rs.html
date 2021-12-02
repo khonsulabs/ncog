@@ -459,7 +459,7 @@
 
 <span class="kw">impl</span> <span class="ident">View</span> <span class="kw">for</span> <span class="ident">NonRevokedPublicKeys</span> {
     <span class="kw">type</span> <span class="ident">Collection</span> <span class="op">=</span> <span class="ident">IdentityKey</span>;
-    <span class="kw">type</span> <span class="ident">Key</span> <span class="op">=</span> <span class="ident">EncodedPublicKey</span>;
+    <span class="kw">type</span> <span class="ident">Key</span> <span class="op">=</span> (<span class="ident">PublicKeyKind</span>, <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span>);
     <span class="kw">type</span> <span class="ident">Value</span> <span class="op">=</span> ();
 
     <span class="kw">fn</span> <span class="ident">unique</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">bool</span> {
@@ -467,7 +467,7 @@
     }
 
     <span class="kw">fn</span> <span class="ident">version</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="ident">u64</span> {
-        <span class="number">0</span>
+        <span class="number">1</span>
     }
 
     <span class="kw">fn</span> <span class="ident">name</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) <span class="op">-</span><span class="op">&gt;</span> <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">bonsaidb::core::schema::Name</span>, <span class="ident">InvalidNameError</span><span class="op">&gt;</span> {
@@ -482,7 +482,7 @@
             <span class="prelude-val">Ok</span>(<span class="ident">key</span>
                 .<span class="ident">public_keys</span>
                 .<span class="ident">iter</span>()
-                .<span class="ident">map</span>(<span class="op">|</span>(<span class="ident">kind</span>, <span class="ident">key</span>)<span class="op">|</span> <span class="ident">document</span>.<span class="ident">emit_key</span>(<span class="ident">EncodedPublicKey::new</span>(<span class="kw-2">*</span><span class="ident">kind</span>, <span class="ident">key</span>)))
+                .<span class="ident">map</span>(<span class="op">|</span>(<span class="ident">kind</span>, <span class="ident">key</span>)<span class="op">|</span> <span class="ident">document</span>.<span class="ident">emit_key</span>((<span class="kw-2">*</span><span class="ident">kind</span>, <span class="ident">key</span>.<span class="ident">to_bytes</span>())))
                 .<span class="ident">collect</span>())
         }
     }
