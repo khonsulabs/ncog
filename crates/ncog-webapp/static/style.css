@@ -1,0 +1,29 @@
+body {
+    background-color: #092327;
+    color: #a8e7f0;
+}
+
+nav {
+    background-color: #092327;
+    color: #a8e7f0;
+}
+
+nav .brand {
+    color: #ff5765;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    color: #ff5765;
+    padding: 0.25em 0em ;
+    margin: 0.25em 0em ;
+}
+
+.page-head .subtitle {
+    color: #39a95e;
+    font-size: medium;
+    padding-left: 0.25em;
+}
+
+.content {
+    padding: 3.5em 1.5em;
+}

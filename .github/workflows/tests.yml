@@ -48,6 +48,7 @@ jobs:
           mkdir release
           cp target/release/ncog release/
           cp -r crates/ncog-webapp/pkg release/
+          cp -r crates/ncog-webapp/static release/
           tar -cvf release.tar release
 
       - uses: actions/upload-artifact@v2

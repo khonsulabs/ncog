@@ -14,6 +14,11 @@ const PKG_PATH: &str = "./crates/ncog-webapp/pkg";
 #[cfg(not(debug_assertions))]
 const PKG_PATH: &str = "./pkg";
 
+#[cfg(debug_assertions)]
+const STATIC_PATH: &str = "./crates/ncog-webapp/static";
+#[cfg(not(debug_assertions))]
+const STATIC_PATH: &str = "./static";
+
 #[derive(Debug, Clone)]
 pub struct WebServer {
     server: CustomServer<Ncog>,
@@ -59,6 +64,16 @@ impl WebServer {
                         )
                     },
                 ),
+            )
+            .nest(
+                "/static",
+                axum::routing::service_method_routing::get(ServeDir::new(STATIC_PATH))
+                    .handle_error(|err: std::io::Error| {
+                        (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            format!("unhandled internal error: {}", err),
+                        )
+                    }),
             )
             .route("/ws", get(upgrade_websocket))
             .fallback(axum::routing::get(spa_index))
@@ -112,34 +127,17 @@ async fn upgrade_websocket(
 }
 
 #[allow(clippy::unused_async)]
-async fn spa_index(_req: Request<Body>) -> Html<String> {
-    Html::from(String::from(
-        r#"
-        <html>
-            <head>
-                <meta content="text/html;charset=utf-8" http-equiv="Content-Type"/>
-                <title>Ncog is a Counter</title>
-                <style type="text/css">
-                    body { font-family: verdana, arial, monospace; }
-                    main {
-                        width:30px;
-                        height: 100px;
-                        margin:auto;
-                        text-align: center;
-                    }
-                    input, .count{
-                        font-size: 40px;
-                        padding: 30px;
-                    }
-                </style>
-                <script type=module>
-                    import init from '/pkg/ncog_webapp.js';
-                    await init().catch(console.error);
-                </script>
-            </head>
-            <body>
-            </body>
-        </html>
-    "#,
-    ))
+#[cfg(not(debug_assertions))]
+async fn spa_index() -> Html<&'static str> {
+    Html::from(include_str!("../../ncog-webapp/static/bootstrap.html"))
+}
+
+#[allow(clippy::unused_async)]
+#[cfg(debug_assertions)]
+async fn spa_index() -> Html<String> {
+    Html::from(
+        tokio::fs::read_to_string("crates/ncog-webapp/static/bootstrap.html")
+            .await
+            .unwrap(),
+    )
 }

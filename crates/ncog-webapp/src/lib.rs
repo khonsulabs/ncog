@@ -1,80 +1,127 @@
-use std::sync::Arc;
+mod home;
 
-use dominator::{class, clone, events, html, Dom};
+use std::{str::FromStr, sync::Arc};
+
+use bonsaidb::client::url::Url;
+use dominator::{clone, html, link, routing, Dom};
 use futures_signals::signal::{Mutable, SignalExt};
-use once_cell::sync::Lazy;
 use wasm_bindgen::prelude::*;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Route {
+    Home,
+    // Completed,
+    NotFound(String),
+}
+
+impl Route {
+    // This could use more advanced URL parsing, but it isn't needed
+    pub fn from_url(url: &str) -> Self {
+        let url = match Url::from_str(url) {
+            Ok(url) => url,
+            Err(_) => return Route::NotFound(url.to_string()),
+        };
+        match url.path() {
+            "/" => Route::Home,
+            other => Route::NotFound(other.to_string()),
+        }
+    }
+
+    pub fn to_url(&self) -> &str {
+        match self {
+            Route::Home => "/",
+            Route::NotFound(other) => other,
+        }
+    }
+
+    pub fn render(self, app: &Arc<App>) -> Option<Dom> {
+        match self {
+            Route::Home => Some(home::render(app)),
+            Route::NotFound(path) => Some(html!("div", {
+                .text(&format!("The content ({}) you are looking for cannot be found.", path))
+            })),
+        }
+    }
+}
+
+impl Default for Route {
+    fn default() -> Self {
+        // Create the Route based on the current URL
+        Self::from_url(&routing::url().lock_ref())
+    }
+}
+
 struct App {
-    counter: Mutable<i32>,
+    identity: Mutable<Option<String>>,
+    route: Mutable<Route>,
+    sign_in: home::SignIn,
 }
 
 impl App {
     fn new() -> Arc<Self> {
         Arc::new(Self {
-            counter: Mutable::new(0),
+            identity: Mutable::new(None),
+            route: Mutable::new(Route::default()),
+            sign_in: home::SignIn::default(),
         })
     }
 
-    fn render(state: Arc<Self>) -> Dom {
-        // Define CSS styles
-        static ROOT_CLASS: Lazy<String> = Lazy::new(|| {
-            class! {
-                .style("display", "inline-block")
-                .style("background-color", "black")
-                .style("padding", "10px")
-            }
-        });
-
-        static TEXT_CLASS: Lazy<String> = Lazy::new(|| {
-            class! {
-                .style("color", "white")
-                .style("font-weight", "bold")
-            }
-        });
-
-        static BUTTON_CLASS: Lazy<String> = Lazy::new(|| {
-            class! {
-                .style("display", "block")
-                .style("width", "100px")
-                .style("margin", "5px")
-            }
-        });
-
+    fn render(app: Arc<Self>) -> Dom {
         // Create the DOM nodes
         html!("div", {
-            .class(&*ROOT_CLASS)
+            .class("content")
+
+            .future(routing::url().signal_ref(|url| Route::from_url(url)).for_each(clone!(app => move |route| {
+                app.route.set_neq(route);
+                async{}
+            })))
 
             .children(&mut [
+                html!("nav", {
+                    .children(&mut [
+                        link!(Route::Home.to_url(), {
+                            .class("brand")
+                            .children(&mut [
+                                html!("img", {
+                                    .class("logo")
+                                    .attr("src", "/static/icon.svg")
+                                }),
+                                html!("span", {
+                                    .text("Ncog")
+                                })
+                            ])
+                        }),
+
+                        html!("input", {
+                            .attr("id", "bmenub")
+                            .attr("type", "checkbox")
+                            .class("show")
+                        }),
+
+                        html!("label", {
+                            .attr("for", "bmenub")
+                            .attr("class", "burger pseudo button")
+                            .text("\u{02261}")
+                        }),
+
+                        html!("div", {
+                            .class("menu")
+                            .children(&mut [
+                                link!(Route::Home.to_url(), {
+                                    .attr("class", "pseudo button")
+                                    .text("Home")
+                                    .class_signal("active", app.route.signal_cloned().map(move |x| x == Route::Home))
+                                })
+                            ])
+                        })
+                    ])
+                }),
+
                 html!("div", {
-                    .class(&*TEXT_CLASS)
-                    .text_signal(state.counter.signal().map(|x| format!("Counter: {}", x)))
-                }),
-
-                html!("button", {
-                    .class(&*BUTTON_CLASS)
-                    .text("Increase")
-                    .event(clone!(state => move |_: events::Click| {
-                        // Increment the counter
-                        state.counter.replace_with(|x| *x + 1);
-                    }))
-                }),
-
-                html!("button", {
-                    .class(&*BUTTON_CLASS)
-                    .text("Decrease")
-                    .event(clone!(state => move |_: events::Click| {
-                        // Decrement the counter
-                        state.counter.replace_with(|x| *x - 1);
-                    }))
-                }),
-
-                html!("button", {
-                    .class(&*BUTTON_CLASS)
-                    .text("Reset")
-                    .event(clone!(state => move |_: events::Click| {
-                        // Reset the counter to 0
-                        state.counter.set_neq(0);
+                    .child_signal(clone!(app => {
+                        app.route.signal_cloned().map(move |route| {
+                            route.render(&app)
+                        })
                     }))
                 }),
             ])
